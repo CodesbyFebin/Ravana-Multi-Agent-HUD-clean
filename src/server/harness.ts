@@ -109,6 +109,27 @@ export class AgentExecutionHarness {
     return structuredClone(this.portfolio);
   }
 
+  getAuditReceipts(): AuditReceipt[] {
+    if (!fs.existsSync(this.auditFile)) return [];
+    return fs.readFileSync(this.auditFile, 'utf8').split('\\n').filter(Boolean).map((line) => JSON.parse(line) as AuditReceipt);
+  }
+
+  verifyLedger(): { valid: boolean; receiptCount: number; headHash: string } {
+    let previousHash = '0'.repeat(64);
+    let receiptCount = 0;
+    try {
+      for (const receipt of this.getAuditReceipts()) {
+        const { hash, ...fields } = receipt;
+        if (receipt.prevHash !== previousHash || hashReceipt(fields) !== hash) return { valid: false, receiptCount, headHash: previousHash };
+        previousHash = hash;
+        receiptCount += 1;
+      }
+      return { valid: true, receiptCount, headHash: previousHash };
+    } catch {
+      return { valid: false, receiptCount, headHash: previousHash };
+    }
+  }
+
   private successfulStep(toolName: string, agentId: AgentId, args: Record<string, unknown>, output: unknown, start: number): ToolExecutionStep {
     return {
       stepIndex: 1,
@@ -226,18 +247,8 @@ export class AgentExecutionHarness {
 
   recordDecision(review: AdversarialReview, decision: 'approved' | 'rejected'): AuditReceipt {
     fs.mkdirSync(this.dataDir, { recursive: true });
-    let previousHash = '0'.repeat(64);
-    if (fs.existsSync(this.auditFile)) {
-      const lines = fs.readFileSync(this.auditFile, 'utf8').split('\n').filter(Boolean);
-      for (const line of lines) {
-        const receipt = JSON.parse(line) as AuditReceipt;
-        const { hash, ...fields } = receipt;
-        if (receipt.prevHash !== previousHash || hashReceipt(fields) !== hash) {
-          throw new Error('Audit ledger integrity check failed; refusing to append');
-        }
-        previousHash = receipt.hash;
-      }
-    }
+    const ledger = this.verifyLedger();
+    if (!ledger.valid) throw new Error('Audit ledger integrity check failed; refusing to append');
     const fields: Omit<AuditReceipt, 'hash'> = {
       receiptId: `rcpt_${randomUUID()}`,
       timestamp: Date.now(),
@@ -247,10 +258,10 @@ export class AgentExecutionHarness {
       debateTranscript: JSON.stringify(review.critiques).slice(0, 8000),
       verdict: review.recommendation,
       userDecision: decision,
-      prevHash: previousHash,
+      prevHash: ledger.headHash,
     };
     const receipt: AuditReceipt = { ...fields, hash: hashReceipt(fields) };
-    fs.appendFileSync(this.auditFile, `${JSON.stringify(receipt)}\n`, { encoding: 'utf8', mode: 0o600 });
+    fs.appendFileSync(this.auditFile, `${JSON.stringify(receipt)}\\n`, { encoding: 'utf8', mode: 0o600 });
     return receipt;
   }
 
