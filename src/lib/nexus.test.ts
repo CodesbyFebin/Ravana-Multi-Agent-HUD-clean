@@ -189,3 +189,40 @@ test('isAgentHandlingHighPriorityTask detects high/critical tasks accurately', a
   assert.equal(isAgentHandlingHighPriorityTask(idleAgent, tasksList), false);
 });
 
+
+
+test('AgentExecutionHarness gathers diagnostics, paper-trades only after approval, and verifies its ledger', async () => {
+  const fs = await import('node:fs');
+  const os = await import('node:os');
+  const path = await import('node:path');
+  const { AgentExecutionHarness } = await import('../server/harness.ts');
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ravana-harness-test-'));
+
+  try {
+    const harness = new AgentExecutionHarness({
+      dataDir,
+      executionEnabled: true,
+      priceProvider: async () => 50_000,
+    });
+    const diagnostics = await harness.runReadOnlyTool('system_diagnostics', {}, 'devops');
+    assert.equal(diagnostics.status, 'success');
+    assert.ok(JSON.parse(diagnostics.output).cpuCount >= 1);
+
+    const review = {
+      ...createSimulatedAdversarialReview('Execute trade: buy 0.01 BTC', 'execute_trade', 'paper trade only', 'trader'),
+      actionTitle: 'Execute trade: buy 0.01 BTC',
+      status: 'approved' as const,
+    };
+    const receipt = harness.recordDecision(review, 'approved');
+    assert.ok(receipt.hash.length === 64);
+    const result = await harness.executeApprovedAction(review);
+    assert.equal(result.status, 'success');
+    assert.match(result.output, /no exchange order was sent/);
+    assert.equal(harness.getPortfolio().mode, 'PAPER');
+    assert.equal(harness.getPortfolio().tradeHistory[0].reviewId, review.id);
+    assert.equal(harness.verifyLedger().valid, true);
+    assert.equal(harness.verifyLedger().receiptCount, 1);
+  } finally {
+    fs.rmSync(dataDir, { recursive: true, force: true });
+  }
+});
