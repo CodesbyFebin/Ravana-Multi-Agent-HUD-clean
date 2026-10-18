@@ -135,18 +135,24 @@ test('memory search ranks explicitly supplied entries by content and tags', () =
     {
       id: 'memory-trade',
       content: 'BTC trading setup and risk notes',
+      rawRedactedContent: 'BTC trading setup and risk notes',
       category: 'trade',
       importance: 8,
       tags: ['btc', 'trading'],
-      timestamp: 1,
+      createdAt: 1,
+      source: 'test',
+      redactedItemCount: 0,
     },
     {
       id: 'memory-general',
       content: 'A general product note',
-      category: 'note',
+      rawRedactedContent: 'A general product note',
+      category: 'conversation',
       importance: 2,
       tags: ['product'],
-      timestamp: 2,
+      createdAt: 2,
+      source: 'test',
+      redactedItemCount: 0,
     },
   ];
   const results = searchMemories('trading btc', memories);
