@@ -1,0 +1,5 @@
+{
+  "name": "RAVANA — AI Agentic HUD by CodesbyFebin",
+  "description": "An AI agentic HUD and multi-agent command centre for voice commands, model routing, live telemetry, task workflows, and human-reviewed actions.",
+  "requestFramePermissions": ["microphone"]
+}

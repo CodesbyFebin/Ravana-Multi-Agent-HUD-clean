@@ -1,0 +1,177 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --bg-primary: #050b14;
+    --bg-panel: rgba(8, 18, 30, 0.92);
+    --border-cyan: #00ffc8;
+    --border-dim: rgba(0, 255, 200, 0.25);
+    --text-primary: #e0f7fa;
+    --text-secondary: #7fd4c1;
+    --accent-cyan: #00ffc8;
+    --accent-blue: #00e5ff;
+    --accent-amber: #ffaa00;
+    --accent-red: #ff3366;
+    --accent-green: #00ff88;
+  }
+
+  body {
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    font-family: 'JetBrains Mono', monospace;
+    overflow: hidden;
+    user-select: none;
+  }
+
+  h1, h2, h3, .font-orbitron {
+    font-family: 'Orbitron', sans-serif;
+    letter-spacing: 0.08em;
+  }
+}
+
+/* Cyberpunk angular cut corner styles */
+.hud-corner {
+  clip-path: polygon(
+    0 10px,
+    10px 0,
+    calc(100% - 10px) 0,
+    100% 10px,
+    100% calc(100% - 10px),
+    calc(100% - 10px) 100%,
+    10px 100%,
+    0 calc(100% - 10px)
+  );
+}
+
+.hud-panel {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-dim);
+  box-shadow: 0 0 15px rgba(0, 255, 200, 0.07);
+}
+
+.hud-panel-active {
+  border-color: var(--accent-cyan);
+  box-shadow: 0 0 20px rgba(0, 255, 200, 0.2);
+}
+
+/* CRT Scanline overlay */
+.scanlines {
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 255, 200, 0.02) 2px,
+    rgba(0, 255, 200, 0.02) 4px
+  );
+  pointer-events: none;
+}
+
+/* Custom cyber scrollbars */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(5, 12, 20, 0.8);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 255, 200, 0.4);
+  border-radius: 2px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 255, 200, 0.8);
+}
+
+/* Subtle CSS pulse animation for agent status indicator on high-priority tasks */
+@keyframes status-pulse-subtle {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+    box-shadow: 0 0 4px rgba(245, 158, 11, 0.45);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scale(1.03);
+    box-shadow: 0 0 12px rgba(245, 158, 11, 0.85), 0 0 4px rgba(239, 68, 68, 0.5);
+  }
+}
+
+.status-pulse-high {
+  animation: status-pulse-subtle 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Theme the app shell and common HUD surfaces without changing data meaning. */
+.ravana-app[data-theme='light'] {
+  --bg-primary: #f1f5f9;
+  --bg-panel: rgba(255, 255, 255, 0.96);
+  --border-cyan: #0284c7;
+  --border-dim: rgba(2, 132, 199, 0.3);
+  --text-primary: #0f172a;
+  --text-secondary: #334155;
+  --accent-cyan: #0284c7;
+  background-color: var(--bg-primary) !important;
+  color: var(--text-primary) !important;
+}
+
+.ravana-app[data-theme='light'] .hud-panel {
+  background: var(--bg-panel);
+  border-color: var(--border-dim);
+  color: var(--text-primary);
+}
+
+.ravana-app[data-theme='light'] [class*="bg-[#"],
+.ravana-app[data-theme='light'] [class*="bg-slate-950"],
+.ravana-app[data-theme='light'] [class*="bg-slate-900"] {
+  background-color: #fff !important;
+}
+
+.ravana-app[data-theme='light'] [class*="text-cyan-"],
+.ravana-app[data-theme='light'] [class*="text-slate-300"],
+.ravana-app[data-theme='light'] [class*="text-slate-400"] {
+  color: #334155 !important;
+}
+
+.ravana-app[data-theme='light'] [class*="border-cyan-"] {
+  border-color: rgba(2, 132, 199, 0.35) !important;
+}
+
+.ravana-app[data-theme='light'] [class*="bg-cyan-950"] {
+  background-color: #e0f2fe !important;
+}
+
+.ravana-app[data-theme='matrix'] {
+  --bg-primary: #020804;
+  --bg-panel: rgba(4, 18, 8, 0.94);
+  --border-cyan: #00ff66;
+  --border-dim: rgba(0, 255, 102, 0.3);
+  --text-primary: #e2fce8;
+  --text-secondary: #86efac;
+  --accent-cyan: #00ff66;
+  background-color: var(--bg-primary) !important;
+  color: var(--text-primary) !important;
+}
+
+.ravana-app[data-theme='matrix'] .hud-panel {
+  background: var(--bg-panel);
+  border-color: var(--border-dim);
+  color: var(--text-primary);
+}
+
+.ravana-app[data-theme='matrix'] [class*="bg-[#"],
+.ravana-app[data-theme='matrix'] [class*="bg-slate-950"],
+.ravana-app[data-theme='matrix'] [class*="bg-slate-900"] {
+  background-color: #041208 !important;
+}
+
+.ravana-app[data-theme='matrix'] [class*="text-cyan-"] {
+  color: #d1fae5 !important;
+}
+
+.ravana-app[data-theme='matrix'] [class*="border-cyan-"] {
+  border-color: rgba(0, 255, 102, 0.35) !important;
+}
+
+.ravana-app[data-theme='matrix'] [class*="bg-cyan-950"] {
+  background-color: #052e16 !important;
+}
+
