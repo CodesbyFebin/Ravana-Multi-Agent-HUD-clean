@@ -5,13 +5,14 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { randomUUID } from 'node:crypto';
 import os from 'os';
+import { statfsSync } from 'node:fs';
 import dotenv from 'dotenv';
 import { GoogleGenAI, ThinkingLevel } from '@google/genai';
 import { classifyTaskComplexity, routeTaskToModel, requiresAdversarialApproval, INITIAL_MODEL_POOL } from './src/lib/router.ts';
-import { createSimulatedAdversarialReview, evaluateAdversarialVerdict } from './src/lib/adversarial.ts';
+import { evaluateAdversarialVerdict } from './src/lib/adversarial.ts';
 import { AgentExecutionHarness, type ToolExecutionStep } from './src/server/harness.ts';
 import { MemoryEvolutionEngine } from './src/server/memoryEvolution.ts';
-import type { ReviewerCritique, SystemTelemetry, ModelMetadata, TradeEvent, WebSocketClientEvent, WebSocketServerEvent, AgentId, AgentStatus, AdversarialReview } from './src/lib/types.ts';
+import type { ReviewerCritique, SystemTelemetry, ModelMetadata, WebSocketClientEvent, WebSocketServerEvent, AgentId, AgentStatus, AdversarialReview } from './src/lib/types.ts';
 
 dotenv.config();
 
@@ -40,9 +41,9 @@ const ai = apiKey
 
 // State management on server
 let isSystemFrozen = false;
-let modelPool: ModelMetadata[] = JSON.parse(JSON.stringify(INITIAL_MODEL_POOL));
-let cumulativeTokensToday = 485000;
-let estimatedCostToday = 3.42;
+let modelPool: ModelMetadata[] = INITIAL_MODEL_POOL.map((model) => ({ ...model, status: 'offline', latencyMs: 0, tokensUsedToday: 0 }));
+let cumulativeTokensToday = 0;
+let estimatedCostToday = 0;
 const harness = new AgentExecutionHarness({
   executionEnabled: isLoopbackHost && process.env.RAVANA_ENABLE_APPROVED_EXECUTION === 'true',
 });
@@ -116,19 +117,26 @@ function getRealTelemetry(): SystemTelemetry {
 
   // CPU load average over 1 min or process CPU usage
   const cpus = os.cpus();
-  const loadAvg = os.loadavg()[0] || 0.6;
-  const cpuPct = Math.min(99, Math.max(12, Math.round((loadAvg / (cpus.length || 1)) * 100)));
+  const loadAvg = os.loadavg()[0];
+  const cpuPct = Math.min(100, Math.max(0, Math.round((loadAvg / Math.max(1, cpus.length)) * 100)));
+  let diskPct = 0;
+  try {
+    const disk = statfsSync(process.cwd());
+    diskPct = Math.round(((disk.blocks - disk.bfree) / Math.max(1, disk.blocks)) * 100);
+  } catch {
+    diskPct = 0;
+  }
 
   return {
     cpuUsage: cpuPct,
     ramUsage: ramPct,
-    diskUsage: 42,
-    networkSpeedMbps: 94.2 + (Math.random() - 0.5) * 4,
-    latencyMs: Math.round(14 + Math.random() * 8),
+    diskUsage: diskPct,
+    networkSpeedMbps: 0,
+    latencyMs: 0,
     heapUsageMb: heapMb,
     uptimeSec: Math.floor(process.uptime()),
     costTodayUsd: Number(estimatedCostToday.toFixed(3)),
-    tokensPerHour: Math.round(12400 + (Math.random() - 0.5) * 800),
+    tokensPerHour: 0,
     activeClients: clients.size,
     circuitStatus: isSystemFrozen ? 'OPEN' : 'CLOSED',
     timestamp: Date.now(),
@@ -293,7 +301,7 @@ async function handleUserCommandWebSocket(
   if (routing.requiresAdversarialReview) {
     broadcast({
       type: 'thought_step',
-      text: 'Adversarial Review protocol triggered: Spawning 3-LLM anti-hallucination council.',
+      text: 'Structured risk review requested from the configured Gemini model.',
       highlight: 'Adversarial Review',
       timestamp: Date.now(),
     });
@@ -305,25 +313,11 @@ async function handleUserCommandWebSocket(
       currentTask: `Adversarial debate: ${prompt.slice(0, 40)}`,
     });
 
-    const actionType = prompt.toLowerCase().includes('trade')
-      ? 'execute_trade'
-      : prompt.toLowerCase().includes('deploy')
-      ? 'deploy'
-      : 'shell_exec';
-
-    const review = rememberReview(createSimulatedAdversarialReview(prompt, actionType, `Routed to ${routing.selectedModel}`, agentId));
-
-    broadcast({
-      type: 'approval_request',
-      review,
-    });
-
     broadcast({
       type: 'terminal_line',
-      lineType: 'warn',
-      text: `[ANTI-HALLUCINATION GATE] Action paused awaiting consensus verification (${review.consensusScore}% agreement).`,
+      lineType: 'error',
+      text: '[APPROVAL GATE] Risky commands must use the server review endpoint; WebSocket execution is blocked.',
     });
-
     return;
   }
 
@@ -335,9 +329,10 @@ async function handleUserCommandWebSocket(
   // Standard model execution.
   try {
     let responseText = '';
-    const chosenModel = (options.useArgonThinking ? 'gemini-4-argon' : routing.selectedModel);
+    const chosenModel = options.useArgonThinking ? 'gemini-4-argon' : routing.selectedModel;
+    if (!ai) throw new Error('Gemini backend is not configured; command was not executed.');
 
-    if (ai) {
+    {
       const config: Record<string, unknown> = {
         systemInstruction: `You are RAVANA, an advanced cyberpunk AI command centre orchestrator. You speak with high confidence, surgical precision, and authority. The active specialist is ${agentId.toUpperCase()}. Never hallucinate sources.`,
       };
@@ -352,48 +347,40 @@ async function handleUserCommandWebSocket(
         config.tools = [{ googleMaps: {} }];
       }
 
+      const modelStartedAt = Date.now();
       const res = await ai.models.generateContent({
         model: chosenModel.includes('argon') ? 'gemini-4-argon' : chosenModel.includes('flash-lite') ? 'gemini-3.1-flash-lite' : 'gemini-3.8-flash',
         contents: `${prompt}\n\n[Read-only server observations]\n${toolContext}`,
         config,
       });
 
-      responseText = res.text || 'Command completed with no output.';
-    } else {
-      responseText = `[RAVANA ${agentId.toUpperCase()}] Handled via local fallback core. Task completed nominal.`;
-    }
+      responseText = res.text || 'The model returned no text.';
 
-    // Update tokens & cost
-    cumulativeTokensToday += 480;
-    estimatedCostToday += 0.001;
-
-    modelPool = modelPool.map((m) =>
-      m.id === chosenModel
-        ? {
-            ...m,
-            tokensUsedToday: m.tokensUsedToday + 480,
-            latencyMs: Math.max(40, m.latencyMs + Math.round((Math.random() - 0.5) * 40)),
-          }
+      // Record provider-reported usage and measured request latency only.
+      const usedTokens = Number(res.usageMetadata?.totalTokenCount || 0);
+      cumulativeTokensToday += usedTokens;
+      modelPool = modelPool.map((m) => m.id === chosenModel
+        ? { ...m, status: 'online', tokensUsedToday: m.tokensUsedToday + usedTokens, latencyMs: Date.now() - modelStartedAt }
         : m
-    );
+      );
 
-    broadcast({
-      type: 'model_status',
-      models: modelPool,
-    });
+      broadcast({
+        type: 'model_status',
+        models: modelPool,
+      });
 
-    broadcast({
-      type: 'thought_step',
-      text: `Response generated via ${chosenModel} → Validated against memory store`,
-      highlight: 'Validated',
-      timestamp: Date.now(),
-    });
+      broadcast({
+        type: 'thought_step',
+        text: `Response generated via ${chosenModel}; read-only observations included where available`,
+        highlight: 'Response',
+        timestamp: Date.now(),
+      });
 
-    broadcast({
-      type: 'terminal_line',
-      lineType: 'success',
-      text: `[${agentId.toUpperCase()}] ${responseText.slice(0, 160)}${responseText.length > 160 ? '...' : ''}`,
-    });
+      broadcast({
+        type: 'terminal_line',
+        lineType: 'success',
+        text: `[${agentId.toUpperCase()}] ${responseText.slice(0, 160)}${responseText.length > 160 ? '...' : ''}`,
+      });
 
     broadcast({
       type: 'command_response',
@@ -437,7 +424,7 @@ async function handleUserCommandWebSocket(
   }
 }
 
-// Background Real-Time Telemetry & Simulation Ticker (Runs every 3 seconds)
+// Broadcast measured host telemetry every three seconds.
 setInterval(() => {
   if (clients.size === 0) return;
 
@@ -448,53 +435,7 @@ setInterval(() => {
     telemetry,
   });
 
-  // 2. Randomly simulate market trade tick from Grok Autotrader (every ~12 seconds)
-  if (Math.random() > 0.65 && !isSystemFrozen) {
-    const pairs = ['BTC/USDC', 'ETH/USDC', 'SOL/USDC'];
-    const sides: ('buy' | 'sell')[] = ['buy', 'sell'];
-    const pair = pairs[Math.floor(Math.random() * pairs.length)];
-    const side = sides[Math.floor(Math.random() * sides.length)];
-    const price = pair.startsWith('BTC')
-      ? `$${(104000 + Math.random() * 800).toFixed(0)}`
-      : pair.startsWith('ETH')
-      ? `$${(3220 + Math.random() * 60).toFixed(0)}`
-      : `$${(190 + Math.random() * 4).toFixed(2)}`;
-    const pnlVal = Math.round((Math.random() - 0.25) * 120);
-    const pnl = `${pnlVal >= 0 ? '+' : ''}$${pnlVal}`;
-
-    const now = new Date();
-    const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-
-    const trade: TradeEvent = {
-      time: timeStr,
-      side,
-      pair,
-      price,
-      pnl,
-    };
-
-    broadcast({
-      type: 'trade_event',
-      trade,
-    });
-  }
-
-  // 3. Jitter model latencies
-  modelPool = modelPool.map((m) => {
-    if (m.status === 'online') {
-      const jitter = Math.round((Math.random() - 0.5) * 20);
-      return {
-        ...m,
-        latencyMs: Math.max(30, m.latencyMs + jitter),
-      };
-    }
-    return m;
-  });
-
-  broadcast({
-    type: 'model_status',
-    models: modelPool,
-  });
+  broadcast({ type: 'model_status', models: modelPool });
 }, 3000);
 
 setInterval(() => broadcast(getClawBotsSnapshot()), 8000);
@@ -510,6 +451,24 @@ app.get('/api/status', (_req: Request, res: Response) => {
     activeConnections: clients.size,
     timestamp: Date.now(),
   });
+});
+
+let marketTickerCache: { timestamp: number; tickers: Array<Record<string, unknown>> } | null = null;
+
+app.get('/api/market/tickers', async (_req: Request, res: Response) => {
+  if (marketTickerCache && Date.now() - marketTickerCache.timestamp < 15_000) {
+    return res.json({ source: 'Binance public ticker API', ...marketTickerCache });
+  }
+  try {
+    const symbols = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT'] as const;
+    const results = await Promise.all(symbols.map((symbol) => harness.runReadOnlyTool('market_ticker_probe', { symbol }, 'trader')));
+    const tickers = results.filter((result) => result.status === 'success').map((result) => JSON.parse(result.output) as Record<string, unknown>);
+    if (tickers.length === 0) return res.status(502).json({ error: 'Market data provider unavailable' });
+    marketTickerCache = { timestamp: Date.now(), tickers };
+    return res.json({ source: 'Binance public ticker API', ...marketTickerCache });
+  } catch (error) {
+    return res.status(502).json({ error: error instanceof Error ? error.message : 'Market data provider unavailable' });
+  }
 });
 
 app.get('/api/trading/claw-bots', (_req: Request, res: Response) => {
@@ -533,6 +492,7 @@ app.get('/api/receipts', (_req: Request, res: Response) => {
 });
 
 app.post('/api/chat', async (req: Request, res: Response) => {
+  let requestedAgentId: AgentId = 'queen';
   try {
     const {
       prompt,
@@ -548,26 +508,25 @@ app.post('/api/chat', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Prompt is required' });
     }
 
+    const safeAgentId: AgentId = ['queen', 'coder', 'pr_reviewer', 'devops', 'trader', 'social', 'researcher', 'scheduler', 'security', 'comms'].includes(agentId) ? agentId as AgentId : 'queen';
+    requestedAgentId = safeAgentId;
+    broadcast({ type: 'agent_status', agentId: safeAgentId, status: 'thinking', currentTask: prompt.slice(0, 80) });
     const routingDecision = routeTaskToModel(prompt, forceFreeMode, modelPool);
-    const toolSteps = await harness.gatherGroundedToolTelemetry(prompt, agentId as AgentId);
+    const toolSteps = await harness.gatherGroundedToolTelemetry(prompt, safeAgentId);
     broadcastToolSteps(toolSteps);
     const toolContext = toolSteps.map((step) => `[Tool ${step.toolName} / ${step.status}] ${step.output}`).join('\n');
-    const modelToUse = preferredModel || routingDecision.selectedModel;
+    const supportedModelIds = new Set(['gemini-3.8-flash', 'gemini-4-argon', 'gemini-3.1-flash-lite']);
+    const modelToUse = typeof preferredModel === 'string' && supportedModelIds.has(preferredModel) ? preferredModel : routingDecision.selectedModel;
     const isAdversarialRequired = requiresAdversarialApproval(prompt);
 
     if (!ai) {
-      return res.json({
-        text: `[RAVANA ${agentId.toUpperCase()}] Command acknowledged: "${prompt}". Local fallback mode; read-only observations were collected where available. No external action was executed.`,
-        modelUsed: modelToUse,
-        routing: routingDecision,
-        requiresApproval: isAdversarialRequired,
-        groundingChunks: [],
-      });
+      broadcast({ type: 'agent_status', agentId: safeAgentId, status: 'idle', currentTask: 'Backend model not configured' });
+      return res.status(503).json({ error: 'Gemini backend is not configured; command was not executed.' });
     }
 
     let geminiModel = 'gemini-3.8-flash';
     const config: Record<string, unknown> = {
-      systemInstruction: `You are RAVANA, an advanced cyberpunk AI command centre orchestrator. You speak with high confidence, surgical precision, and authority. The current active specialist is ${agentId.toUpperCase()}. Never hallucinate sources.`,
+      systemInstruction: `You are RAVANA, an advanced cyberpunk AI command centre orchestrator. You speak with high confidence, surgical precision, and authority. The current active specialist is ${safeAgentId.toUpperCase()}. Never hallucinate sources.`,
     };
 
     if (modelToUse.includes('argon')) {
@@ -601,15 +560,26 @@ app.post('/api/chat', async (req: Request, res: Response) => {
       timestamp: Date.now(),
     });
 
+    const modelRequestStartedAt = Date.now();
     const response = await ai.models.generateContent({
       model: geminiModel,
       contents: `${prompt}\n\n[Read-only server observations]\n${toolContext}`,
       config,
     });
 
+    const usedTokens = Number(response.usageMetadata?.totalTokenCount || 0);
+    cumulativeTokensToday += usedTokens;
+    modelPool = modelPool.map((model) => model.id === modelToUse
+      ? { ...model, status: 'online', latencyMs: Date.now() - modelRequestStartedAt, tokensUsedToday: model.tokensUsedToday + usedTokens }
+      : model
+    );
+    broadcast({ type: 'model_status', models: modelPool });
+
     const text = response.text || 'Command processed without text output.';
     const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
 
+    broadcast({ type: 'agent_status', agentId: safeAgentId, status: 'acting', currentTask: 'Delivering model response' });
+    setTimeout(() => broadcast({ type: 'agent_status', agentId: safeAgentId, status: 'idle', currentTask: 'Standing by' }), 2000);
     res.json({
       text,
       modelUsed: geminiModel,
@@ -618,6 +588,7 @@ app.post('/api/chat', async (req: Request, res: Response) => {
       groundingChunks,
     });
   } catch (error: any) {
+    broadcast({ type: 'agent_status', agentId: requestedAgentId, status: 'idle', currentTask: 'Request failed' });
     res.status(500).json({
       error: error.message || 'Error processing AI command',
     });
@@ -628,6 +599,7 @@ app.post('/api/adversarial-review', async (req: Request, res: Response) => {
   try {
     const { actionTitle, actionType, details, agent = 'queen' } = req.body;
     if (!actionTitle) return res.status(400).json({ error: 'actionTitle is required' });
+    if (!ai) return res.status(503).json({ error: 'Review service is not configured; approval fails closed.' });
 
     if (ai) {
       const debatePrompt = `You are the RAVANA Anti-Hallucination Firewall and Adversarial Review Council.
@@ -636,7 +608,7 @@ Action: ${actionTitle} (${actionType})
 Details: ${details || 'Execution requested by user'}
 Proposed by Agent: ${agent}
 
-You must evaluate this from three distinct AI perspectives:
+One Gemini model is evaluating the action from three structured perspectives. These perspectives are not independent model votes and must not be described as multi-model consensus:
 1. Proponent (advocating for operational progress, CI/CD speed, execution feasibility)
 2. Security & Risk Critic (advocating for defensive posture, failure blast radius, rollback safety)
 3. Fact & Grounding Auditor (ruthlessly checking for hallucinated assumptions, unverified endpoints, or missing context)
@@ -645,8 +617,8 @@ Respond in JSON format conforming to this schema:
 {
   "critiques": [
     {
-      "modelId": "claude-4",
-      "modelName": "Claude 3.7 Sonnet (Proponent)",
+      "modelId": "gemini-3.8-flash",
+      "modelName": "Gemini (self-review: proponent)",
       "role": "proponent",
       "verdict": "FOR",
       "confidence": 88,
@@ -656,8 +628,8 @@ Respond in JSON format conforming to this schema:
       "evidence": ["string"]
     },
     {
-      "modelId": "gpt-4o",
-      "modelName": "GPT-4o (Security Critic)",
+      "modelId": "gemini-3.8-flash",
+      "modelName": "Gemini (self-review: security critic)",
       "role": "security_critic",
       "verdict": "FOR" or "NEEDS_CHANGES" or "AGAINST",
       "confidence": 82,
@@ -667,8 +639,8 @@ Respond in JSON format conforming to this schema:
       "evidence": ["string"]
     },
     {
-      "modelId": "gemini-4-argon",
-      "modelName": "Gemini 4 Argon (Fact & Grounding Auditor)",
+      "modelId": "gemini-3.8-flash",
+      "modelName": "Gemini (self-review: fact auditor)",
       "role": "fact_auditor",
       "verdict": "FOR" or "AGAINST",
       "confidence": 95,
@@ -722,19 +694,7 @@ Respond in JSON format conforming to this schema:
       }
     }
 
-    const fallbackReview = rememberReview(createSimulatedAdversarialReview(
-      actionTitle,
-      actionType || 'deploy',
-      details || 'Automated agent request',
-      agent
-    ));
-
-    broadcast({
-      type: 'approval_request',
-      review: fallbackReview,
-    });
-
-    res.json(fallbackReview);
+    return res.status(502).json({ error: 'Risk review failed; approval fails closed.' });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }

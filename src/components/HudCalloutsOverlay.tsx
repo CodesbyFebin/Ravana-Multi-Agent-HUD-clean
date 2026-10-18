@@ -10,12 +10,12 @@ interface HudCalloutsOverlayProps {
 export const HudCalloutsOverlay: React.FC<HudCalloutsOverlayProps> = ({ visible, telemetry }) => {
   if (!visible) return null;
 
-  const netMbps = telemetry ? `${telemetry.networkSpeedMbps.toFixed(1)} MB/S` : '94.2 MB/S';
-  const ping = telemetry ? `${telemetry.latencyMs}MS` : '14MS';
-  const cpu = telemetry ? `${telemetry.cpuUsage}%` : '24%';
-  const ram = telemetry ? `${telemetry.ramUsage}%` : '48%';
-  const heap = telemetry ? `${telemetry.heapUsageMb} MB` : '124 MB';
-  const uptime = telemetry ? `${telemetry.uptimeSec}S` : '1820S';
+  const netMbps = telemetry && telemetry.networkSpeedMbps > 0 ? `${telemetry.networkSpeedMbps.toFixed(1)} Mbps` : 'N/A';
+  const ping = telemetry && telemetry.latencyMs > 0 ? `${telemetry.latencyMs} ms` : 'N/A';
+  const cpu = telemetry ? `${telemetry.cpuUsage}%` : 'N/A';
+  const ram = telemetry ? `${telemetry.ramUsage}%` : 'N/A';
+  const heap = telemetry ? `${telemetry.heapUsageMb} MB` : 'N/A';
+  const uptime = telemetry ? `${telemetry.uptimeSec}S` : 'N/A';
 
   return (
     <div className="absolute inset-0 pointer-events-none z-20 overflow-hidden font-mono select-none text-[10px]">

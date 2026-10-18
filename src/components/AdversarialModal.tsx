@@ -64,18 +64,18 @@ export const AdversarialModal: React.FC<AdversarialModalProps> = ({
               <div className="font-orbitron font-bold text-sm text-cyan-300 tracking-wider flex items-center gap-2">
                 <span>ANTI-HALLUCINATION FIREWALL</span>
                 <span className="text-[10px] px-2 py-0.5 rounded bg-cyan-900/60 text-cyan-300 border border-cyan-500/30 font-mono">
-                  3-LLM ADVERSARIAL REVIEW
+                  SINGLE-PROVIDER STRUCTURED REVIEW
                 </span>
               </div>
               <p className="text-[11px] text-cyan-500/80">
-                Gated approval protocol: No destructive action executes without multi-provider AI consensus.
+                One configured model supplies structured risk perspectives; these are not independent votes. User approval remains required.
               </p>
             </div>
           </div>
 
           {/* Consensus Score Gauge */}
           <div className={`flex flex-col items-center px-3 py-1.5 rounded border ${getConsensusColor(review.consensusScore)}`}>
-            <span className="text-[10px] uppercase font-bold tracking-wider">CONSENSUS</span>
+            <span className="text-[10px] uppercase font-bold tracking-wider">REVIEW ALIGNMENT</span>
             <span className="font-orbitron font-extrabold text-lg">{review.consensusScore}%</span>
           </div>
         </div>

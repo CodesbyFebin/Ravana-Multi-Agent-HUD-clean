@@ -60,7 +60,7 @@ export const MemoryWidget: React.FC<MemoryWidgetProps> = ({
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-cyan-500/20 pb-2">
         <div className="flex items-center gap-2">
           <Database className="w-4 h-4 text-cyan-400" />
-          <span className="font-orbitron font-bold text-cyan-200">SHARED UNIFIED MEMORY VAULT</span>
+          <span className="font-orbitron font-bold text-cyan-200">SESSION MEMORY // NOT SERVER PERSISTED</span>
           <span className="text-[10px] px-1.5 py-0.5 rounded bg-cyan-950 text-cyan-400 border border-cyan-500/30">
             AUTO-REDACTION ACTIVE
           </span>

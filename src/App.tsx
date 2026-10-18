@@ -37,8 +37,6 @@ import {
   ProactiveSuggestion 
 } from './lib/types.ts';
 import { INITIAL_MODEL_POOL, routeTaskToModel } from './lib/router.ts';
-import { INITIAL_MEMORIES } from './lib/memory.ts';
-import { createSimulatedAdversarialReview } from './lib/adversarial.ts';
 import { useNexusWebSocket } from './lib/useNexusWebSocket.ts';
 
 const SETTINGS_KEY = 'ravana_ui_preferences_v1';
@@ -83,7 +81,7 @@ export default function App() {
       id: 'queen',
       name: 'Queen Agent',
       role: 'Master Orchestrator, Gating & Planning',
-      primaryModels: ['Gemini 3.8 Flash', 'Gemini 4 Argon'],
+      primaryModels: ['Gemini shared backend'],
       skills: ['task_decomposition', 'routing', 'adversarial_gate', 'daily_brief'],
       status: 'idle',
       currentTask: 'Standing by for "Hey Bro" wake word',
@@ -92,7 +90,7 @@ export default function App() {
       id: 'coder',
       name: 'Coder',
       role: 'Write, Refactor & Debug Codebase',
-      primaryModels: ['Claude 3.7', 'GPT-4o'],
+      primaryModels: ['Gemini shared backend'],
       skills: ['write_code', 'refactor', 'debug', 'git_ops'],
       status: 'idle',
       currentTask: 'Idle',
@@ -101,25 +99,25 @@ export default function App() {
       id: 'pr_reviewer',
       name: 'PR Reviewer',
       role: 'Multi-LLM PR Audit & Risk Scoring',
-      primaryModels: ['Claude 3.7', 'GPT-4o', 'DeepSeek-V3'],
+      primaryModels: ['Gemini shared backend'],
       skills: ['pr_review', 'code_audit', 'risk_score'],
-      status: 'acting',
-      currentTask: 'Review Staging PR #42 (CVE Patch) [High Priority]',
+      status: 'idle',
+      currentTask: 'Waiting for a server event',
     },
     {
       id: 'devops',
       name: 'DevOps / Monitor',
       role: 'Server, Latency & Deploy Operations',
-      primaryModels: ['Llama 3.3 (Local)', 'Grok-3'],
+      primaryModels: ['Gemini shared backend'],
       skills: ['server_health', 'deploy', 'backup_verify', 'alert_triage'],
-      status: 'thinking',
-      currentTask: 'Deploy Production Cluster v2.4 [Critical Priority]',
+      status: 'idle',
+      currentTask: 'Waiting for a server event',
     },
     {
       id: 'trader',
       name: 'Trader',
       role: 'Portfolio P&L & Market Signals',
-      primaryModels: ['Grok-3', 'DeepSeek-V3'],
+      primaryModels: ['Gemini shared backend'],
       skills: ['portfolio_snapshot', 'trade_signal', 'risk_check'],
       status: 'idle',
       currentTask: 'Idle',
@@ -128,7 +126,7 @@ export default function App() {
       id: 'social',
       name: 'Social / Content',
       role: 'Thread Drafting & Analytics',
-      primaryModels: ['GPT-4o', 'Gemini 3.8 Flash'],
+      primaryModels: ['Gemini shared backend'],
       skills: ['draft_post', 'schedule_post', 'thread_optimise'],
       status: 'idle',
       currentTask: 'Idle',
@@ -137,7 +135,7 @@ export default function App() {
       id: 'researcher',
       name: 'Researcher',
       role: 'Grounding Search, Citations & Fact-Check',
-      primaryModels: ['Gemini 3.8 Flash (Grounding)', 'DeepSeek-V3'],
+      primaryModels: ['Gemini shared backend'],
       skills: ['web_search', 'deep_research', 'fact_check'],
       status: 'idle',
       currentTask: 'Idle',
@@ -146,7 +144,7 @@ export default function App() {
       id: 'scheduler',
       name: 'Scheduler',
       role: 'Calendar & Proactive Suggestions',
-      primaryModels: ['Phi-4 (Local)', 'Gemini 3.1 Flash-Lite'],
+      primaryModels: ['Gemini shared backend'],
       skills: ['calendar_manage', 'daily_brief', 'remind'],
       status: 'idle',
       currentTask: 'Idle',
@@ -155,7 +153,7 @@ export default function App() {
       id: 'security',
       name: 'Security Guard',
       role: 'CVE Detection & Pen-Test Audit',
-      primaryModels: ['Grok-3', 'Claude 3.7'],
+      primaryModels: ['Gemini shared backend'],
       skills: ['vuln_scan', 'secret_scan', 'auth_audit'],
       status: 'idle',
       currentTask: 'Idle',
@@ -164,7 +162,7 @@ export default function App() {
       id: 'comms',
       name: 'Comms & Triage',
       role: 'Slack, Email & Message Triage',
-      primaryModels: ['Claude 3.7', 'Phi-4 (Local)'],
+      primaryModels: ['Gemini shared backend'],
       skills: ['email_triage', 'slack_digest', 'comms_reply'],
       status: 'idle',
       currentTask: 'Idle',
@@ -191,7 +189,6 @@ export default function App() {
     isFrozen: wsIsFrozen,
     serverVoiceAmplitude,
     agentStatuses,
-    sendUserCommand,
     sendFreeze,
     sendApprovalDecision,
     sendVoiceAmplitude,
@@ -233,59 +230,10 @@ export default function App() {
   const audioSourceRef = useRef<HTMLAudioElement | null>(null);
 
   // Tasks Kanban State
-  const [tasks, setTasks] = useState<TaskItem[]>([
-    {
-      id: 'task_1',
-      title: 'Review Staging PR #42 (CVE Patch)',
-      description: 'Audit dependency updates and verify zero regression in auth tokens.',
-      status: 'review',
-      assignedAgent: 'pr_reviewer',
-      priority: 'high',
-      requiresReview: true,
-      tags: ['pr', 'security', 'cve'],
-      createdAt: Date.now() - 3600000 * 2,
-      updatedAt: Date.now(),
-    },
-    {
-      id: 'task_2',
-      title: 'Deploy Production Cluster v2.4',
-      description: 'APAC and US-East blue-green canary deployment with rollback check.',
-      status: 'todo',
-      assignedAgent: 'devops',
-      priority: 'critical',
-      requiresReview: true,
-      tags: ['deploy', 'prod', 'docker'],
-      createdAt: Date.now() - 3600000 * 4,
-      updatedAt: Date.now(),
-    },
-    {
-      id: 'task_3',
-      title: 'BTC Market Position Monitor',
-      description: 'Track $68,500 threshold and prepare 0.75 BTC long order.',
-      status: 'in_progress',
-      assignedAgent: 'trader',
-      priority: 'medium',
-      requiresReview: true,
-      tags: ['trading', 'btc'],
-      createdAt: Date.now() - 3600000 * 6,
-      updatedAt: Date.now(),
-    },
-    {
-      id: 'task_4',
-      title: 'Generate Weekly System Uptime Receipt',
-      description: '99.98% cluster availability verified and signed into hash-chain.',
-      status: 'done',
-      assignedAgent: 'queen',
-      priority: 'low',
-      requiresReview: false,
-      tags: ['receipt', 'uptime'],
-      createdAt: Date.now() - 3600000 * 20,
-      updatedAt: Date.now(),
-    },
-  ]);
+  const [tasks, setTasks] = useState<TaskItem[]>([]);
 
   // Shared Memory State
-  const [memories, setMemories] = useState<MemoryItem[]>(INITIAL_MEMORIES);
+  const [memories, setMemories] = useState<MemoryItem[]>([]);
 
   // Adversarial Review Modal State
   const [activeReview, setActiveReview] = useState<AdversarialReview | null>(null);
@@ -369,11 +317,6 @@ export default function App() {
     setVoiceAmplitude(0.3);
     sendVoiceAmplitude(0.3, 'thinking');
 
-    // Send user command over WebSocket real-time bus
-    if (wsConnected) {
-      sendUserCommand(prompt, activeAgentId, options);
-    }
-
     const routing = routeTaskToModel(prompt, options.forceFreeMode ?? isFreeMode);
 
     if (routing.requiresAdversarialReview) {
@@ -395,11 +338,12 @@ export default function App() {
             agent: activeAgentId,
           }),
         });
-        const reviewData: AdversarialReview = await res.json();
-        setActiveReview(reviewData);
+        const reviewData = await res.json();
+        if (!res.ok) throw new Error(reviewData.error || 'Review service unavailable');
+        setActiveReview(reviewData as AdversarialReview);
       } catch {
-        const fallback = createSimulatedAdversarialReview(prompt, actionType, 'Execution requested by user', activeAgentId);
-        setActiveReview(fallback);
+        setLastSpeechResponse('Review service unavailable. The action was not approved or executed.');
+        setSystemStatus('idle');
       }
       return;
     }
@@ -422,21 +366,15 @@ export default function App() {
       });
 
       const data = await res.json();
-      setLastSpeechResponse(data.text);
+      if (!res.ok) throw new Error(data.error || 'Command request failed');
+      setLastSpeechResponse(data.text || 'No response was returned.');
       setSystemStatus('acting');
-
-      setModels((prev: ModelMetadata[]) =>
-        prev.map((m) =>
-          m.id === chosenModel
-            ? { ...m, tokensUsedToday: m.tokensUsedToday + 450 }
-            : m
-        )
-      );
 
       speakText(data.text);
     } catch {
       setSystemStatus('idle');
       setVoiceAmplitude(0);
+      setLastSpeechResponse('Backend request failed. No action was executed.');
     }
   };
 
@@ -573,7 +511,7 @@ export default function App() {
           transcript += event.results[i][0].transcript;
         }
 
-        setVoiceAmplitude(0.4 + Math.random() * 0.5);
+        setVoiceAmplitude(0);
 
         if (transcript.toLowerCase().includes('hey bro')) {
           playSound('wake');
@@ -600,18 +538,27 @@ export default function App() {
     }
   }, []);
 
-  const handleExecuteProactive = (work: ProactiveSuggestion) => {
+  const handleExecuteProactive = async (work: ProactiveSuggestion) => {
     setActiveAgentId(work.agent);
-    if (work.needsApproval) {
-      const review = createSimulatedAdversarialReview(
-        work.title,
-        work.category === 'trading' ? 'execute_trade' : 'deploy',
-        work.summary,
-        work.agent
-      );
-      setActiveReview(review);
-    } else {
-      handleDispatchCommand(work.suggestedAction);
+    if (!work.needsApproval) {
+      await handleDispatchCommand(work.suggestedAction);
+      return;
+    }
+    try {
+      const response = await fetch('/api/adversarial-review', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          actionTitle: work.title,
+          actionType: work.category === 'trading' ? 'execute_trade' : 'deploy',
+          details: work.summary,
+          agent: work.agent,
+        }),
+      });
+      if (!response.ok) throw new Error('Review service unavailable');
+      setActiveReview(await response.json() as AdversarialReview);
+    } catch {
+      setLastSpeechResponse('Review service unavailable. The action was not approved or executed.');
     }
   };
 
@@ -706,7 +653,7 @@ export default function App() {
             {activeTab === 'trading_finance' && (
               <div className="flex flex-col gap-4">
                 <TradingServerWidget telemetry={telemetry} trades={tradeEvents} />
-                <TradingFinanceWidgets externalTrades={tradeEvents} />
+                <TradingFinanceWidgets />
                 <ClawBotsWidget />
                 <TreasuryVaultWidget />
               </div>
@@ -756,14 +703,23 @@ export default function App() {
                   );
                   sendTaskUpdate(id, st);
                 }}
-                onTriggerReview={(task) => {
-                  const rev = createSimulatedAdversarialReview(
-                    task.title,
-                    task.title.toLowerCase().includes('deploy') ? 'deploy' : 'shell_exec',
-                    task.description,
-                    task.assignedAgent
-                  );
-                  setActiveReview(rev);
+                onTriggerReview={async (task) => {
+                  try {
+                    const response = await fetch('/api/adversarial-review', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        actionTitle: task.title,
+                        actionType: task.title.toLowerCase().includes('deploy') ? 'deploy' : 'shell_exec',
+                        details: task.description,
+                        agent: task.assignedAgent,
+                      }),
+                    });
+                    if (!response.ok) throw new Error('Review service unavailable');
+                    setActiveReview(await response.json() as AdversarialReview);
+                  } catch {
+                    setLastSpeechResponse('Review service unavailable. The action was not approved or executed.');
+                  }
                 }}
                 onAddTask={() => {
                   const title = prompt('Enter Task Title:');

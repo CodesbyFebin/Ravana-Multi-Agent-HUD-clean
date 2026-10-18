@@ -63,13 +63,14 @@ export const AgentSwarmWidget: React.FC<AgentSwarmWidgetProps> = ({
       <div className="flex items-center justify-between border-b border-cyan-500/20 pb-2">
         <div className="flex items-center gap-2">
           <Crown className="w-4 h-4 text-amber-400" />
-          <span className="font-orbitron font-bold text-cyan-200">SPECIALIST AGENT SWARM</span>
+          <span className="font-orbitron font-bold text-cyan-200">AGENT ROLE STATUS // SINGLE ORCHESTRATOR</span>
+          <span className="text-[9px] text-amber-300">Agent cards are role labels; separate worker processes are not configured.</span>
           <span className="text-[10px] px-1.5 py-0.5 rounded bg-cyan-950 text-cyan-400 border border-cyan-500/30">
-            10 AGENTS ON-CALL
+            10 ROLE CARDS
           </span>
         </div>
         <span className="text-[10px] text-cyan-500/80">
-          Orchestrated by Queen Agent • Shared Memory & MCP Tools
+          Single server orchestrator • no separate worker processes
         </span>
       </div>
 

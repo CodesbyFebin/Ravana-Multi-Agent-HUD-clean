@@ -37,7 +37,7 @@ export const TasksWidget: React.FC<TasksWidgetProps> = ({
       <div className="flex items-center justify-between border-b border-cyan-500/20 pb-2">
         <div className="flex items-center gap-2">
           <CheckSquare className="w-4 h-4 text-cyan-400" />
-          <span className="font-orbitron font-bold text-cyan-200">TASK ORCHESTRATION BOARD</span>
+          <span className="font-orbitron font-bold text-cyan-200">TASK BOARD // SESSION-ONLY</span>
           <span className="text-[10px] px-1.5 py-0.5 rounded bg-cyan-950 text-cyan-400 border border-cyan-500/30">
             {tasks.length} TASKS TRACKED
           </span>

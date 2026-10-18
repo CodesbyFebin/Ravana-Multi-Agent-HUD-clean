@@ -136,7 +136,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
 
           <div className="flex items-center gap-1 text-[11px]">
             <span className="text-cyan-500">PING:</span>
-            <span className="text-emerald-400 font-bold">{telemetry ? `${telemetry.latencyMs}ms` : '—'}</span>
+            <span className="text-emerald-400 font-bold">{telemetry && telemetry.latencyMs > 0 ? `${telemetry.latencyMs}ms` : 'N/A'}</span>
           </div>
 
           <div className="flex items-center gap-1 text-[11px] border-l border-cyan-500/20 pl-2">
