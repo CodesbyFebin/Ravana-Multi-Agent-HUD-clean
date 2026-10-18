@@ -28,8 +28,8 @@ The HUD organizes controls into overview, DevOps and infrastructure, trading and
 Requirements: Node.js 20+ and npm, pnpm, or Bun.
 
 ```bash
-git clone https://github.com/CodesbyFebin/Ravana-Multi-Agent-HUD.git
-cd Ravana-Multi-Agent-HUD
+git clone https://github.com/CodesbyFebin/Ravana-Multi-Agent-HUD-clean.git
+cd Ravana-Multi-Agent-HUD-clean
 npm install
 cp .env.example .env
 ```
