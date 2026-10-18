@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { classifyTaskComplexity, requiresAdversarialApproval, routeTaskToModel } from './router.ts';
 import { calculateConsensusScore, evaluateAdversarialVerdict, detectHallucinationFlags, generateAuditReceipt, createSimulatedAdversarialReview } from './adversarial.ts';
 import { redactSecretsAndPII, searchMemories, INITIAL_MEMORIES } from './memory.ts';
-import type { ReviewerCritique } from './types.ts';
+import type { ReviewerCritique, MemoryItem } from './types.ts';
 
 test('router correctly classifies task complexity', () => {
   assert.equal(classifyTaskComplexity('hello'), 'Trivial');
@@ -131,7 +131,7 @@ test('memory redacts API keys, emails, and secrets', () => {
 
 test('memory search ranks explicitly supplied entries by content and tags', () => {
   assert.deepEqual(INITIAL_MEMORIES, []);
-  const memories = [
+  const memories: MemoryItem[] = [
     {
       id: 'memory-trade',
       content: 'BTC trading setup and risk notes',
