@@ -320,7 +320,7 @@ export class AgentExecutionHarness {
 
       if (review.actionType === 'shell_exec') {
         const title = review.actionTitle.toLowerCase();
-        const command = title.includes('test') ? ['npm', ['test']]
+        const command: [string, string[]] | null = title.includes('test') ? ['npm', ['test']]
           : title.includes('lint') ? ['npm', ['run', 'lint']]
           : title.includes('git status') ? ['git', ['status', '--short', '--branch']]
           : title.includes('git log') ? ['git', ['log', '-n', '5', '--oneline']]
