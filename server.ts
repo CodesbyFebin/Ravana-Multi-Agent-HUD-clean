@@ -3,19 +3,23 @@ import { createServer } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { randomUUID } from 'node:crypto';
 import os from 'os';
 import dotenv from 'dotenv';
 import { GoogleGenAI, ThinkingLevel } from '@google/genai';
 import { classifyTaskComplexity, routeTaskToModel, requiresAdversarialApproval, INITIAL_MODEL_POOL } from './src/lib/router.ts';
-import { createSimulatedAdversarialReview, evaluateAdversarialVerdict, generateAuditReceipt } from './src/lib/adversarial.ts';
-import type { ReviewerCritique, SystemTelemetry, ModelMetadata, TradeEvent, WebSocketClientEvent, WebSocketServerEvent, AgentId, AgentStatus } from './src/lib/types.ts';
+import { createSimulatedAdversarialReview, evaluateAdversarialVerdict } from './src/lib/adversarial.ts';
+import { AgentExecutionHarness, type ToolExecutionStep } from './src/server/harness.ts';
+import type { ReviewerCritique, SystemTelemetry, ModelMetadata, TradeEvent, WebSocketClientEvent, WebSocketServerEvent, AgentId, AgentStatus, AdversarialReview } from './src/lib/types.ts';
 
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const isProd = process.env.NODE_ENV === 'production';
-const PORT = 3000;
+const PORT = Number(process.env.PORT) || 3000;
+const HOST = process.env.HOST || '127.0.0.1';
+const isLoopbackHost = HOST === '127.0.0.1' || HOST === 'localhost' || HOST === '::1';
 
 const app = express();
 app.use(express.json({ limit: '15mb' }));
@@ -38,10 +42,39 @@ let isSystemFrozen = false;
 let modelPool: ModelMetadata[] = JSON.parse(JSON.stringify(INITIAL_MODEL_POOL));
 let cumulativeTokensToday = 485000;
 let estimatedCostToday = 3.42;
+const harness = new AgentExecutionHarness({
+  executionEnabled: isLoopbackHost && process.env.RAVANA_ENABLE_APPROVED_EXECUTION === 'true',
+});
+const pendingReviews = new Map<string, AdversarialReview>();
+
+function rememberReview(review: AdversarialReview): AdversarialReview {
+  const now = Date.now();
+  for (const [id, candidate] of pendingReviews) {
+    if (now - candidate.timestamp > 15 * 60_000) pendingReviews.delete(id);
+  }
+  review.id = `rev_${randomUUID()}`;
+  if (review.status === 'pending' && !review.hallucinationDetected) {
+    if (pendingReviews.size >= 1000) pendingReviews.delete(pendingReviews.keys().next().value!);
+    pendingReviews.set(review.id, review);
+  }
+  return review;
+}
+
+function broadcastToolSteps(steps: ToolExecutionStep[]): void {
+  for (const step of steps) {
+    broadcast({ type: 'thought_step', text: `[TOOL:${step.toolName}] ${step.status} in ${step.durationMs}ms`, highlight: step.toolName, timestamp: step.timestamp });
+    broadcast({ type: 'terminal_line', lineType: step.status === 'success' ? 'output' : step.status === 'error' ? 'error' : 'warn', text: `[${step.toolName}] ${step.output.slice(0, 180)}` });
+  }
+}
 
 // Realtime WebSocket & HUD Event Bus
 const server = createServer(app);
-const wss = new WebSocketServer({ server, path: '/live' });
+const wss = new WebSocketServer({ server, path: '/live', maxPayload: 32 * 1024 });
+const allowedOrigins = new Set([
+  'http://localhost:3000',
+  'http://127.0.0.1:3000',
+  ...(process.env.ALLOWED_ORIGINS || '').split(',').map((origin) => origin.trim()).filter(Boolean),
+]);
 
 const clients = new Set<WebSocket>();
 
@@ -83,7 +116,12 @@ function getRealTelemetry(): SystemTelemetry {
   };
 }
 
-wss.on('connection', (ws) => {
+wss.on('connection', (ws, req) => {
+  const origin = req.headers.origin;
+  if (origin && !allowedOrigins.has(origin)) {
+    ws.close(1008, 'Origin not allowed');
+    return;
+  }
   clients.add(ws);
 
   // Send initial handshake with real telemetry and live model status
@@ -151,11 +189,23 @@ wss.on('connection', (ws) => {
       } else if (parsed.type === 'user_command') {
         handleUserCommandWebSocket(parsed.prompt, parsed.agentId || 'queen', parsed.options || {});
       } else if (parsed.type === 'approval_decision') {
-        broadcast({
-          type: 'terminal_line',
-          lineType: parsed.decision === 'approved' ? 'success' : 'error',
-          text: `[ADVERSARIAL REVIEW] User ${parsed.decision.toUpperCase()} action: ${parsed.reviewId}. Hash logged.`,
-        });
+        if ((parsed.decision !== 'approved' && parsed.decision !== 'rejected') || typeof parsed.reviewId !== 'string') return;
+        const review = pendingReviews.get(parsed.reviewId);
+        if (!review || review.status !== 'pending' || review.hallucinationDetected || Date.now() - review.timestamp > 15 * 60_000) {
+          broadcast({ type: 'terminal_line', lineType: 'error', text: '[ADVERSARIAL REVIEW] Unknown, expired, or blocked review; no action executed.' });
+          return;
+        }
+        pendingReviews.delete(review.id); // Consume before any action to prevent replay.
+        review.status = parsed.decision;
+        review.userDecision = parsed.decision;
+        review.userDecisionTime = Date.now();
+        const receipt = harness.recordDecision(review, parsed.decision);
+        review.receiptHash = receipt.hash;
+        const executionStep = parsed.decision === 'approved' ? await harness.executeApprovedAction(review) : undefined;
+        if (executionStep) {
+          broadcast({ type: 'terminal_line', lineType: executionStep.status === 'success' ? 'success' : executionStep.status === 'error' ? 'error' : 'warn', text: `[TOOL:${executionStep.toolName}] ${executionStep.output.slice(0, 500)}` });
+        }
+        broadcast({ type: 'approval_decision', reviewId: review.id, decision: parsed.decision, receipt, executionStep });
       } else if (parsed.type === 'task_update') {
         broadcast({
           type: 'terminal_line',
@@ -241,7 +291,7 @@ async function handleUserCommandWebSocket(
       ? 'deploy'
       : 'shell_exec';
 
-    const review = createSimulatedAdversarialReview(prompt, actionType, `Routed to ${routing.selectedModel}`, agentId);
+    const review = rememberReview(createSimulatedAdversarialReview(prompt, actionType, `Routed to ${routing.selectedModel}`, agentId));
 
     broadcast({
       type: 'approval_request',
@@ -257,7 +307,12 @@ async function handleUserCommandWebSocket(
     return;
   }
 
-  // Step 4: Standard model execution
+  // Step 4: Gather read-only, bounded tool observations before model execution.
+  const toolSteps = await harness.gatherGroundedToolTelemetry(prompt, agentId);
+  broadcastToolSteps(toolSteps);
+  const toolContext = toolSteps.map((step) => `[Tool ${step.toolName} / ${step.status}] ${step.output}`).join('\n');
+
+  // Standard model execution.
   try {
     let responseText = '';
     const chosenModel = (options.useArgonThinking ? 'gemini-4-argon' : routing.selectedModel);
@@ -279,7 +334,7 @@ async function handleUserCommandWebSocket(
 
       const res = await ai.models.generateContent({
         model: chosenModel.includes('argon') ? 'gemini-4-argon' : chosenModel.includes('flash-lite') ? 'gemini-3.1-flash-lite' : 'gemini-3.8-flash',
-        contents: prompt,
+        contents: `${prompt}\n\n[Read-only server observations]\n${toolContext}`,
         config,
       });
 
@@ -435,6 +490,14 @@ app.get('/api/status', (_req: Request, res: Response) => {
   });
 });
 
+app.get('/api/portfolio', (_req: Request, res: Response) => {
+  res.json(harness.getPortfolio());
+});
+
+app.get('/api/receipts', (_req: Request, res: Response) => {
+  res.json({ integrity: harness.verifyLedger(), receipts: harness.getAuditReceipts() });
+});
+
 app.post('/api/chat', async (req: Request, res: Response) => {
   try {
     const {
@@ -452,12 +515,15 @@ app.post('/api/chat', async (req: Request, res: Response) => {
     }
 
     const routingDecision = routeTaskToModel(prompt, forceFreeMode, modelPool);
+    const toolSteps = await harness.gatherGroundedToolTelemetry(prompt, agentId as AgentId);
+    broadcastToolSteps(toolSteps);
+    const toolContext = toolSteps.map((step) => `[Tool ${step.toolName} / ${step.status}] ${step.output}`).join('\n');
     const modelToUse = preferredModel || routingDecision.selectedModel;
     const isAdversarialRequired = requiresAdversarialApproval(prompt);
 
     if (!ai) {
       return res.json({
-        text: `[RAVANA ${agentId.toUpperCase()}] Command acknowledged: "${prompt}". Running on local fallback stack. System nominal.`,
+        text: `[RAVANA ${agentId.toUpperCase()}] Command acknowledged: "${prompt}". Local fallback mode; read-only observations were collected where available. No external action was executed.`,
         modelUsed: modelToUse,
         routing: routingDecision,
         requiresApproval: isAdversarialRequired,
@@ -503,7 +569,7 @@ app.post('/api/chat', async (req: Request, res: Response) => {
 
     const response = await ai.models.generateContent({
       model: geminiModel,
-      contents: prompt,
+      contents: `${prompt}\n\n[Read-only server observations]\n${toolContext}`,
       config,
     });
 
@@ -592,8 +658,8 @@ Respond in JSON format conforming to this schema:
 
         if (critiques.length >= 2) {
           const evalResult = evaluateAdversarialVerdict(critiques);
-          const review = {
-            id: 'rev_' + Math.random().toString(36).substring(2, 9),
+          const review = rememberReview({
+            id: 'pending',
             actionTitle,
             actionType,
             details,
@@ -608,7 +674,7 @@ Respond in JSON format conforming to this schema:
             ),
             againstArguments: critiques.flatMap((c) => c.risks),
             timestamp: Date.now(),
-          };
+          } as AdversarialReview);
 
           broadcast({
             type: 'approval_request',
@@ -622,12 +688,12 @@ Respond in JSON format conforming to this schema:
       }
     }
 
-    const fallbackReview = createSimulatedAdversarialReview(
+    const fallbackReview = rememberReview(createSimulatedAdversarialReview(
       actionTitle,
       actionType || 'deploy',
       details || 'Automated agent request',
       agent
-    );
+    ));
 
     broadcast({
       type: 'approval_request',
@@ -693,8 +759,8 @@ async function startServer() {
     });
   }
 
-  server.listen(PORT, '0.0.0.0', () => {
-    console.log(`[RAVANA] Core Command Centre online at http://0.0.0.0:${PORT}`);
+  server.listen(PORT, HOST, () => {
+    console.log(`[RAVANA] Core Command Centre online at http://${HOST}:${PORT}`);
   });
 }
 
