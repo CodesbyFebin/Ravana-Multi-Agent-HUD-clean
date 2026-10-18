@@ -111,7 +111,7 @@ export class AgentExecutionHarness {
 
   getAuditReceipts(): AuditReceipt[] {
     if (!fs.existsSync(this.auditFile)) return [];
-    return fs.readFileSync(this.auditFile, 'utf8').split('\\n').filter(Boolean).map((line) => JSON.parse(line) as AuditReceipt);
+    return fs.readFileSync(this.auditFile, 'utf8').split('\n').filter(Boolean).map((line) => JSON.parse(line) as AuditReceipt);
   }
 
   verifyLedger(): { valid: boolean; receiptCount: number; headHash: string } {
@@ -261,7 +261,7 @@ export class AgentExecutionHarness {
       prevHash: ledger.headHash,
     };
     const receipt: AuditReceipt = { ...fields, hash: hashReceipt(fields) };
-    fs.appendFileSync(this.auditFile, `${JSON.stringify(receipt)}\\n`, { encoding: 'utf8', mode: 0o600 });
+    fs.appendFileSync(this.auditFile, `${JSON.stringify(receipt)}\n`, { encoding: 'utf8', mode: 0o600 });
     return receipt;
   }
 
