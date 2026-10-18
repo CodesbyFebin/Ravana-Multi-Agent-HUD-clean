@@ -19,6 +19,9 @@ import { TradingFinanceWidgets } from './components/widgets/TradingFinanceWidget
 import { CommsIntelWidgets } from './components/widgets/CommsIntelWidgets.tsx';
 import { ExecutiveLifeWidgets } from './components/widgets/ExecutiveLifeWidgets.tsx';
 import { SkillsHarnessWidgets } from './components/widgets/SkillsHarnessWidgets.tsx';
+import { ClawBotsWidget } from './components/widgets/ClawBotsWidget.tsx';
+import { EpisodicMemoryWidget } from './components/widgets/EpisodicMemoryWidget.tsx';
+import { TreasuryVaultWidget } from './components/widgets/TreasuryVaultWidget.tsx';
 
 import { playSound } from './lib/soundFx.ts';
 
@@ -704,6 +707,8 @@ export default function App() {
               <div className="flex flex-col gap-4">
                 <TradingServerWidget telemetry={telemetry} trades={tradeEvents} />
                 <TradingFinanceWidgets externalTrades={tradeEvents} />
+                <ClawBotsWidget />
+                <TreasuryVaultWidget />
               </div>
             )}
 
@@ -787,6 +792,7 @@ export default function App() {
                 memories={memories}
                 onAddMemory={(mem) => setMemories((prev) => [mem, ...prev])}
               />
+              <div className="mt-4"><EpisodicMemoryWidget /></div>
             )}
           </div>
         </div>

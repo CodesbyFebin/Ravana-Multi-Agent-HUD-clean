@@ -10,6 +10,7 @@ import { GoogleGenAI, ThinkingLevel } from '@google/genai';
 import { classifyTaskComplexity, routeTaskToModel, requiresAdversarialApproval, INITIAL_MODEL_POOL } from './src/lib/router.ts';
 import { createSimulatedAdversarialReview, evaluateAdversarialVerdict } from './src/lib/adversarial.ts';
 import { AgentExecutionHarness, type ToolExecutionStep } from './src/server/harness.ts';
+import { MemoryEvolutionEngine } from './src/server/memoryEvolution.ts';
 import type { ReviewerCritique, SystemTelemetry, ModelMetadata, TradeEvent, WebSocketClientEvent, WebSocketServerEvent, AgentId, AgentStatus, AdversarialReview } from './src/lib/types.ts';
 
 dotenv.config();
@@ -46,6 +47,7 @@ const harness = new AgentExecutionHarness({
   executionEnabled: isLoopbackHost && process.env.RAVANA_ENABLE_APPROVED_EXECUTION === 'true',
 });
 const pendingReviews = new Map<string, AdversarialReview>();
+const memoryEvolution = new MemoryEvolutionEngine();
 
 function rememberReview(review: AdversarialReview): AdversarialReview {
   const now = Date.now();
@@ -148,6 +150,7 @@ wss.on('connection', (ws, req) => {
       frozen: isSystemFrozen,
     })
   );
+  ws.send(JSON.stringify(getClawBotsSnapshot()));
 
   ws.on('message', async (messageData) => {
     try {
@@ -477,6 +480,8 @@ setInterval(() => {
   });
 }, 3000);
 
+setInterval(() => broadcast(getClawBotsSnapshot()), 8000);
+
 // REST Endpoints
 app.get('/api/status', (_req: Request, res: Response) => {
   res.json({
@@ -488,6 +493,29 @@ app.get('/api/status', (_req: Request, res: Response) => {
     activeConnections: clients.size,
     timestamp: Date.now(),
   });
+});
+
+app.get('/api/trading/claw-bots', (_req: Request, res: Response) => {
+  res.json({
+    type: 'claw_bots_sync',
+    mode: 'PAPER',
+    execution: 'disabled',
+    profiles: [
+      { id: '@claw/alpha', strategy: 'Trend momentum', status: 'idle — not configured' },
+      { id: '@claw/beta', strategy: 'Volatility scanner', status: 'idle — not configured' },
+      { id: '@claw/gamma', strategy: 'Risk monitor', status: 'idle — not configured' },
+    ],
+    portfolio: harness.getPortfolio(),
+    timestamp: Date.now(),
+  });
+});
+
+app.get('/api/memory/search', (req: Request, res: Response) => {
+  const q = typeof req.query.q === 'string' ? req.query.q.slice(0, 200) : '';
+  const category = typeof req.query.category === 'string' && ['trade', 'server'].includes(req.query.category) ? req.query.category : '';
+  const date = typeof req.query.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(req.query.date) ? req.query.date : '';
+  const memories = memoryEvolution.search(q, category, date);
+  res.json({ query: q, categoryFilter: category || 'all', dateFilter: date || null, totalResults: memories.length, memories });
 });
 
 app.get('/api/portfolio', (_req: Request, res: Response) => {
@@ -743,6 +771,23 @@ app.post('/api/tts', async (req: Request, res: Response) => {
     res.json({ available: false });
   }
 });
+
+function scheduleDailyMemorySynthesis(): void {
+  const now = new Date();
+  const nextUtcMidnight = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1));
+  const timer = setTimeout(() => {
+    const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+    try {
+      memoryEvolution.synthesizeDailyRoutine(harness.getPortfolio(), yesterday);
+      console.log('[RAVANA MEMORY] Paper activity summary synthesized for', yesterday);
+    } catch (error) {
+      console.warn('[RAVANA MEMORY] Synthesis failed:', error instanceof Error ? error.message : 'unknown error');
+    }
+    scheduleDailyMemorySynthesis();
+  }, Math.max(1000, nextUtcMidnight.getTime() - now.getTime()));
+  timer.unref();
+}
+scheduleDailyMemorySynthesis();
 
 async function startServer() {
   if (!isProd) {
