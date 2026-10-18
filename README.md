@@ -96,3 +96,12 @@ Built by [CodesbyFebin](https://github.com/CodesbyFebin) — [Portfolio](https:/
 ## License
 
 No license file is present yet. Until a license is added, normal copyright applies and reuse permissions are not granted.
+
+
+## Agent execution harness
+
+The local server can attach bounded, read-only diagnostics, repository status, dependency summaries, and Binance public ticker observations to model context. These are observation adapters, not a general ReAct loop or a claim that the agents operate independently. Market data may be unavailable if Binance is unreachable.
+
+Approvals are bound to a server-generated, single-use review ID and expire after 15 minutes. Decisions are written to a SHA-256 hash-chained JSONL receipt ledger under `.ravana-data/`. Approved execution is disabled by default; set `RAVANA_ENABLE_APPROVED_EXECUTION=true` in the local server environment to enable the supported paper trade, fixed allowlisted local checks, and deployment-intent recording. Paper trades use simulated USDC only and never submit exchange orders. Deployment approval records an intent manifest; it does not deploy software. The server binds to `127.0.0.1` by default and rejects non-local WebSocket origins.
+
+Do not expose this development server to the public internet. GitHub Pages continues to serve the static demo only.
