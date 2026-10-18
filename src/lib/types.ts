@@ -165,7 +165,7 @@ export type WebSocketServerEvent =
   | { type: 'terminal_line'; lineType: 'prompt' | 'cmd' | 'output' | 'success' | 'warn' | 'error'; text: string }
   | { type: 'trade_event'; trade: TradeEvent }
   | { type: 'approval_request'; review: AdversarialReview }
-  | { type: 'approval_decision'; receipt: AuditReceipt }
+  | { type: 'approval_decision'; reviewId: string; decision: 'approved' | 'rejected'; receipt: AuditReceipt; executionStep?: { toolName: string; status: 'success' | 'blocked_requires_approval' | 'error'; output: string } }
   | { type: 'voice_state'; state: AgentStatus; amplitude?: number }
   | { type: 'voice_amplitude'; amplitude: number; state?: AgentStatus }
   | { type: 'barge_in'; message: string }
