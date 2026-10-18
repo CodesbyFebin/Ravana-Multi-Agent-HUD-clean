@@ -80,6 +80,23 @@ const allowedOrigins = new Set([
 
 const clients = new Set<WebSocket>();
 
+function getClawBotsSnapshot() {
+  return {
+    type: 'claw_bots_sync',
+    mode: 'PAPER' as const,
+    execution: 'disabled' as const,
+    profiles: [
+      { id: '@claw/alpha', strategy: 'Trend momentum', status: 'idle — not configured' },
+      { id: '@claw/beta', strategy: 'Volatility scanner', status: 'idle — not configured' },
+      { id: '@claw/gamma', strategy: 'Risk monitor', status: 'idle — not configured' },
+    ],
+    portfolio: harness.getPortfolio(),
+    timestamp: Date.now(),
+  };
+}
+
+
+
 function broadcast(event: WebSocketServerEvent | Record<string, unknown>) {
   const json = JSON.stringify(event);
   for (const client of clients) {
@@ -496,18 +513,7 @@ app.get('/api/status', (_req: Request, res: Response) => {
 });
 
 app.get('/api/trading/claw-bots', (_req: Request, res: Response) => {
-  res.json({
-    type: 'claw_bots_sync',
-    mode: 'PAPER',
-    execution: 'disabled',
-    profiles: [
-      { id: '@claw/alpha', strategy: 'Trend momentum', status: 'idle — not configured' },
-      { id: '@claw/beta', strategy: 'Volatility scanner', status: 'idle — not configured' },
-      { id: '@claw/gamma', strategy: 'Risk monitor', status: 'idle — not configured' },
-    ],
-    portfolio: harness.getPortfolio(),
-    timestamp: Date.now(),
-  });
+  res.json(getClawBotsSnapshot());
 });
 
 app.get('/api/memory/search', (req: Request, res: Response) => {
