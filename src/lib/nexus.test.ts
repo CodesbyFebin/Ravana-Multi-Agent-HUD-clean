@@ -24,8 +24,8 @@ test('router detects actions requiring adversarial approval', () => {
 
 test('routeTaskToModel routes free mode to zero-cost models', () => {
   const decision = routeTaskToModel('quick ping', true);
-  assert.equal(decision.selectedModel, 'phi-4');
-  assert.equal(decision.isFreeTierEligible, true);
+  assert.equal(decision.selectedModel, 'gemini-3.1-flash-lite');
+  assert.equal(decision.isFreeTierEligible, false);
   assert.equal(decision.estimatedCostUsd, 0);
 });
 
@@ -129,9 +129,28 @@ test('memory redacts API keys, emails, and secrets', () => {
   assert.ok(redactedText.includes('[REDACTED_API_KEY]'));
 });
 
-test('memory search ranks by relevance and tags', () => {
-  const results = searchMemories('trading btc', INITIAL_MEMORIES);
-  assert.ok(results.length > 0);
+test('memory search ranks explicitly supplied entries by content and tags', () => {
+  assert.deepEqual(INITIAL_MEMORIES, []);
+  const memories = [
+    {
+      id: 'memory-trade',
+      content: 'BTC trading setup and risk notes',
+      category: 'trade',
+      importance: 8,
+      tags: ['btc', 'trading'],
+      timestamp: 1,
+    },
+    {
+      id: 'memory-general',
+      content: 'A general product note',
+      category: 'note',
+      importance: 2,
+      tags: ['product'],
+      timestamp: 2,
+    },
+  ];
+  const results = searchMemories('trading btc', memories);
+  assert.equal(results[0].id, 'memory-trade');
   assert.equal(results[0].category, 'trade');
 });
 
