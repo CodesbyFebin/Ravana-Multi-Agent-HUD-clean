@@ -812,7 +812,7 @@ export default function App() {
           review={activeReview}
           onApprove={(receipt) => {
             setAuditReceipts((prev) => [receipt, ...prev]);
-            sendApprovalDecision(activeReview.actionTitle, 'approved', receipt);
+            sendApprovalDecision(activeReview.id, 'approved', receipt);
             setActiveReview(null);
             setSystemStatus('acting');
             setTasks((prev) =>
@@ -824,7 +824,7 @@ export default function App() {
           }}
           onReject={(receipt) => {
             setAuditReceipts((prev) => [receipt, ...prev]);
-            sendApprovalDecision(activeReview.actionTitle, 'rejected', receipt);
+            sendApprovalDecision(activeReview.id, 'rejected', receipt);
             setActiveReview(null);
             setSystemStatus('idle');
             speakText(`Action ${activeReview.actionTitle} rejected by user. Logged to immutable audit trail.`);
