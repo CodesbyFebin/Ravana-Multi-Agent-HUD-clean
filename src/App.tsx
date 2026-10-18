@@ -788,11 +788,13 @@ export default function App() {
 
             {/* 8. Memory Vault */}
             {activeTab === 'memory' && (
-              <MemoryWidget
-                memories={memories}
-                onAddMemory={(mem) => setMemories((prev) => [mem, ...prev])}
-              />
-              <div className="mt-4"><EpisodicMemoryWidget /></div>
+              <>
+                <MemoryWidget
+                  memories={memories}
+                  onAddMemory={(mem) => setMemories((prev) => [mem, ...prev])}
+                />
+                <div className="mt-4"><EpisodicMemoryWidget /></div>
+              </>
             )}
           </div>
         </div>
