@@ -368,9 +368,10 @@ async function handleUserCommandWebSocket(
         type: 'model_status',
         models: modelPool,
       });
+    }
 
-      broadcast({
-        type: 'thought_step',
+    broadcast({
+      type: 'thought_step',
         text: `Response generated via ${chosenModel}; read-only observations included where available`,
         highlight: 'Response',
         timestamp: Date.now(),

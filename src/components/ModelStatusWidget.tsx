@@ -98,7 +98,7 @@ export const ModelStatusWidget: React.FC<ModelStatusWidgetProps> = ({
                   <span className="text-cyan-500/60 flex items-center gap-0.5">
                     <Clock className="w-2.5 h-2.5" /> LATENCY
                   </span>
-                  <span className="text-cyan-300 font-bold">{m.latencyMs > 0 ? m.latencyMs + 'ms' : 'N/A'</span>
+                  <span className="text-cyan-300 font-bold">{m.latencyMs > 0 ? m.latencyMs + 'ms' : 'N/A'}</span>
                 </div>
                 <div className="flex flex-col">
                   <span className="text-cyan-500/60 flex items-center gap-0.5">
