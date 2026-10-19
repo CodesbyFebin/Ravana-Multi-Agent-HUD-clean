@@ -49,7 +49,7 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000). To create a static frontend build, run `npm run build`. For a production-style server, run `npm run build && npm start`.
 
-## GitHub Pages demo
+## GitHub Pages download
 
 The public [GitHub Pages site](https://codesbyfebin.github.io/Ravana-Multi-Agent-HUD-clean/) is a download portal for the source ZIP. It does not publish the interactive HUD, API, WebSocket server, database, worker, or private personal configuration. The workflow type-checks, tests, and builds the frontend, then packages the checked-in source from that commit for download. The ZIP omits `.git`, runtime data, dependencies, and populated environment files.
 
@@ -109,4 +109,4 @@ The local server can attach bounded, read-only diagnostics, repository status, d
 
 Approvals are bound to a server-generated, single-use review ID and expire after 15 minutes. Decisions are written to a SHA-256 hash-chained JSONL receipt ledger under `.ravana-data/`. Approved execution is disabled by default; set `RAVANA_ENABLE_APPROVED_EXECUTION=true` in the local server environment to enable the supported paper trade, fixed allowlisted local checks, and deployment-intent recording. Paper trades use simulated USDC only and never submit exchange orders. Deployment approval records an intent manifest; it does not deploy software. The server binds to `127.0.0.1` by default and rejects non-local WebSocket origins.
 
-Do not expose this development server to the public internet. GitHub Pages continues to serve the static demo only.
+Do not expose this development server to the public internet. GitHub Pages distributes the source ZIP only.
