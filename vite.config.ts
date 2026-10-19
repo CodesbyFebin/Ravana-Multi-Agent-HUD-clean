@@ -8,9 +8,48 @@ export default defineConfig(() => {
     // GitHub Pages project sites are served from a repository subpath.
     base: process.env.GITHUB_ACTIONS === 'true' ? '/Ravana-Multi-Agent-HUD-clean/' : '/',
     plugins: [react(), tailwindcss()],
+    build: {
+      // Keep stable, heavyweight dependencies in cacheable vendor chunks.
+      // Vite 8 uses Rolldown's codeSplitting API instead of Rollup manualChunks.
+      rolldownOptions: {
+        output: {
+          codeSplitting: {
+            groups: [
+              {
+                name: 'vendor-react',
+                test: /node_modules[\\/](react|react-dom|scheduler)[\\/]/,
+                priority: 30,
+              },
+              {
+                name: 'vendor-icons',
+                test: /node_modules[\\/]lucide-react[\\/]/,
+                priority: 25,
+              },
+              {
+                name: 'vendor-three',
+                test: /node_modules[\\/]three[\\/]/,
+                priority: 20,
+              },
+              {
+                name: 'vendor-motion',
+                test: /node_modules[\\/]motion[\\/]/,
+                priority: 20,
+              },
+              {
+                name: 'vendor-core',
+                test: /node_modules[\\/]/,
+                minSize: 20_000,
+                priority: 10,
+              },
+            ],
+          },
+        },
+      },
+      chunkSizeWarningLimit: 600,
+    },
     resolve: {
       alias: {
-        '@': path.resolve(__dirname, '.'),
+        '@': path.resolve(import.meta.dirname, '.'),
       },
     },
     server: {

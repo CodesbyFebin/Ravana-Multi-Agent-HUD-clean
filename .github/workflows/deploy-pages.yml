@@ -1,4 +1,4 @@
-name: Build and deploy RAVANA Pages demo
+name: Build and deploy RAVANA download portal
 
 on:
   push:
@@ -35,11 +35,29 @@ jobs:
       - name: Run unit tests
         run: npm test
 
-      - name: Build static Vite app
+      - name: Verify production frontend build
         run: npm run build
 
-      - name: Add Pages marker
-        run: touch dist/.nojekyll
+      - name: Assemble download-only Pages site
+        id: package
+        run: |
+          mkdir -p pages-site/downloads
+          cp site/index.html pages-site/index.html
+          git archive --format=zip --prefix=RAVANA/ -o pages-site/downloads/ravana-source.zip HEAD
+          python3 - <<'PY'
+          from zipfile import ZipFile
+
+          archive = ZipFile('pages-site/downloads/ravana-source.zip')
+          names = archive.namelist()
+          forbidden = ('.git/', 'node_modules/', '.ravana-data/')
+          bad = [name for name in names if any(part in name for part in forbidden)]
+          secrets = [name for name in names if name.endswith('/.env') or '/.env.' in name and not name.endswith('/.env.example')]
+          if bad or secrets:
+              raise SystemExit(f'Unsafe paths in source archive: {bad + secrets}')
+          PY
+          echo "commit=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          sed -i "s|__SOURCE_COMMIT__|$(git rev-parse --short HEAD)|g" pages-site/index.html
+          touch pages-site/.nojekyll
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
@@ -47,7 +65,7 @@ jobs:
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: dist
+          path: pages-site
 
   deploy:
     environment:

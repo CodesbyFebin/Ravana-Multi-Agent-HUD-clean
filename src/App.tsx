@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ReactorCanvas } from './components/ReactorCanvas.tsx';
+const ReactorCanvas = React.lazy(() =>
+  import('./components/ReactorCanvas.tsx').then(({ ReactorCanvas: component }) => ({ default: component })),
+);
 import { HeaderBar } from './components/HeaderBar.tsx';
 import { VoiceCommandBar } from './components/VoiceCommandBar.tsx';
 import { BottomControlDock, ActiveTabId } from './components/BottomControlDock.tsx';
@@ -682,17 +684,19 @@ export default function App() {
   return (
     <div data-theme={activeTheme} className="ravana-app relative w-screen h-screen overflow-hidden bg-[#050b14] text-cyan-100 font-mono select-none">
       {/* 3D WebGL Reactor Scene (Full-bleed 100vw x 100vh) */}
-      <ReactorCanvas
-        status={isFrozen ? 'frozen' : systemStatus}
-        amplitude={voiceAmplitude}
-        onSelectAgent={(idx) => {
-          const target = agents[idx % agents.length];
-          if (target) {
-            playSound('chirp');
-            setActiveAgentId(target.id);
-          }
-        }}
-      />
+      <React.Suspense fallback={<div className="absolute inset-0" aria-hidden="true" />}>
+        <ReactorCanvas
+          status={isFrozen ? 'frozen' : systemStatus}
+          amplitude={voiceAmplitude}
+          onSelectAgent={(idx) => {
+            const target = agents[idx % agents.length];
+            if (target) {
+              playSound('chirp');
+              setActiveAgentId(target.id);
+            }
+          }}
+        />
+      </React.Suspense>
 
       {/* Futuristic Tactical HUD Callouts Layer */}
       <HudCalloutsOverlay visible={calloutsVisible && !isFrozen} telemetry={telemetry} />

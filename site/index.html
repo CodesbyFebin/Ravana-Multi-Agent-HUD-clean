@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Download the RAVANA AI agentic HUD source package by CodesbyFebin." />
+    <meta name="theme-color" content="#080b15" />
+    <title>RAVANA — Source Download</title>
+    <style>
+      :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, sans-serif; background: #080b15; color: #edf2ff; }
+      * { box-sizing: border-box; }
+      body { min-height: 100vh; margin: 0; display: grid; place-items: center; padding: 2rem; background: radial-gradient(ellipse at 18% 12%, #35134d 0, transparent 42%), radial-gradient(ellipse at 85% 85%, #10264a 0, transparent 45%), #080b15; }
+      main { width: min(100%, 760px); padding: clamp(1.5rem, 5vw, 3.5rem); border: 1px solid #8c63cf66; border-radius: 24px; background: #0d1220e8; box-shadow: 0 24px 90px #0008, 0 0 55px #9d4edd18; }
+      .eyebrow { color: #ff865c; font: 700 .75rem/1.4 ui-monospace, monospace; letter-spacing: .18em; text-transform: uppercase; }
+      h1 { margin: .7rem 0 .25rem; font-size: clamp(2.5rem, 8vw, 5rem); letter-spacing: -.07em; }
+      h1 span { color: #ff765b; }
+      .subtitle { margin: 0; color: #aab5cc; font: 600 .83rem ui-monospace, monospace; letter-spacing: .22em; text-transform: uppercase; }
+      p { color: #bbc5d8; line-height: 1.7; }
+      .download { display: inline-flex; align-items: center; justify-content: center; min-height: 52px; margin: 1rem 0 .5rem; padding: .9rem 1.25rem; border-radius: 10px; background: #ff765b; color: #180b13; font-weight: 800; text-decoration: none; box-shadow: 0 8px 30px #ff765b38; }
+      .download:hover { background: #ff977e; transform: translateY(-1px); }
+      .meta { color: #8490a8; font: .78rem ui-monospace, monospace; }
+      .notice { margin-top: 1.7rem; padding: 1rem 1.1rem; border-left: 3px solid #7b6df3; border-radius: 4px 10px 10px 4px; background: #171a30; color: #c3c9e0; font-size: .9rem; }
+      nav { display: flex; flex-wrap: wrap; gap: 1rem; margin-top: 1.5rem; font-size: .9rem; }
+      a { color: #a9a0ff; }
+      footer { margin-top: 2rem; color: #78839a; font-size: .8rem; }
+      @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; } }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="eyebrow">CodesbyFebin · Open source project</div>
+      <h1><span>RAVANA</span></h1>
+      <div class="subtitle">AI Agentic HUD · Source Package</div>
+      <p>Download the current source snapshot, run it locally, and adapt it for your own environment. This public Pages site distributes the package; it does not host the RAVANA backend or provide shared accounts, inference, or persistent user data.</p>
+      <a class="download" href="./downloads/ravana-source.zip" download>Download source ZIP</a>
+      <div class="meta">Source commit: __SOURCE_COMMIT__ · Includes setup instructions and .env.example</div>
+      <div class="notice"><strong>For your own instance:</strong> follow the README to run the local app. Never put provider keys in the browser bundle or in a fork’s Pages settings. The current backend is local-only and is not ready for public internet exposure.</div>
+      <nav>
+        <a href="https://github.com/CodesbyFebin/Ravana-Multi-Agent-HUD-clean">Browse repository</a>
+        <a href="https://github.com/CodesbyFebin/Ravana-Multi-Agent-HUD-clean/blob/main/README.md">Setup and safety notes</a>
+        <a href="https://github.com/CodesbyFebin">CodesbyFebin</a>
+      </nav>
+      <footer>RAVANA is an experimental agentic HUD. Review the documented demo and simulation boundaries before use.</footer>
+    </main>
+  </body>
+</html>

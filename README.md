@@ -51,7 +51,9 @@ Open [http://localhost:3000](http://localhost:3000). To create a static frontend
 
 ## GitHub Pages demo
 
-The static interface is published at [codesbyfebin.github.io/Ravana-Multi-Agent-HUD-clean](https://codesbyfebin.github.io/Ravana-Multi-Agent-HUD-clean/). GitHub Pages hosts only the Vite frontend: it cannot run the Express API or WebSocket server. The page is therefore labeled **EDGE CLIENT DEMO**; command dispatch is preview-only, and server telemetry, Gemini requests, and approval actions require the local/server deployment described above. The Pages workflow builds and deploys on pushes to `main`.
+The public [GitHub Pages site](https://codesbyfebin.github.io/Ravana-Multi-Agent-HUD-clean/) is a download portal for the source ZIP. It does not publish the interactive HUD, API, WebSocket server, database, worker, or private personal configuration. The workflow type-checks, tests, and builds the frontend, then packages the checked-in source from that commit for download. The ZIP omits `.git`, runtime data, dependencies, and populated environment files.
+
+This download-only page does not restrict access to the public GitHub repository: visitors can still browse, clone, and fork the source. Forks can run the app locally by following the instructions below. The backend is local-only and must not be exposed to the public internet.
 
 ## Configuration
 
@@ -75,6 +77,8 @@ React + TypeScript HUD
 ```
 
 The browser UI talks to the local Express server for chat, speech, and adversarial-review requests. The server broadcasts telemetry, agent state, model state, command events, and task updates through a WebSocket endpoint at `/live`.
+
+Personal hosted deployment is a separate workstream. See [Personal deployment direction](docs/PERSONAL_DEPLOYMENT.md) for the security, persistence, and worker gates that must be completed before any remote API is exposed.
 
 ## Important: demo data and safety boundaries
 
