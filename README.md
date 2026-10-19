@@ -15,7 +15,7 @@ Explore the project: [RAVANA on GitHub](https://github.com/CodesbyFebin/Ravana-M
 - **Model integration:** server-side Gemini API integration through `@google/genai`, with model selection and optional Google Search or Maps grounding where configured.
 - **Review gate:** high-impact command categories can open an adversarial review panel for a person to approve or reject.
 - **Live server telemetry:** CPU, memory, uptime, and connected-client metrics are read from the running Node.js host and sent over the `/live` WebSocket.
-- **Workspace panels:** task board, shared memory interface, model status, proactive suggestions, and grouped DevOps, finance, communications, and executive widgets.
+- **Workspace panels:** local file-backed tasks and user notes when the Express server is running, model status, proactive suggestions, and grouped DevOps, finance, communications, and executive widgets.
 - **Controls:** freeze switch, visual themes, audio toggle, and responsive navigation dock.
 
 ## Screens and panels
@@ -59,6 +59,7 @@ The static interface is published at [codesbyfebin.github.io/Ravana-Multi-Agent-
 | --- | --- | --- |
 | `GEMINI_API_KEY` | Optional | Enables Gemini requests, grounding, and generated speech through the server. Without it, chat and review requests fail closed with HTTP 503; no model response is generated. |
 | `APP_URL` | Optional | Public app URL for deployments that need to refer to their own host. |
+| `RAVANA_DATA_DIR` | Optional | Local single-process JSON file-store directory; defaults to `.ravana-data`. This is not a shared database or multi-instance store. |
 
 Keep API keys on the server. Do not expose secrets in frontend variables or commit a populated `.env` file.
 
@@ -77,9 +78,9 @@ The browser UI talks to the local Express server for chat, speech, and adversari
 
 ## Important: demo data and safety boundaries
 
-RAVANA is a prototype HUD, not a finished autonomous-agent runtime. The ten agent cards are role identities routed through one shared Gemini-backed orchestrator, not ten independent workers. Claw bot cards are inactive strategy profiles; no bot trading loop or exchange order execution is running. The model pool starts from static metadata, while online status and usage update after successful requests. Host CPU, memory, disk, uptime, and WebSocket client counts are measured from the local Node.js process; network speed, latency, token rate, and some cost values are not measured. Market tickers use Binance's public read-only API when available. Tasks and the basic memory panel are client-side state; episodic summaries are stored in a local JSON file. Communications and external infrastructure integrations are disconnected.
+RAVANA is a prototype HUD, not a finished autonomous-agent runtime. The ten agent cards are role identities routed through one shared Gemini-backed orchestrator, not ten independent workers. Claw bot cards are inactive strategy profiles; no bot trading loop or exchange order execution is running. The model pool starts from static metadata, while online status and usage update after successful requests. Host CPU, memory, disk, uptime, and WebSocket client counts are measured from the local Node.js process; network speed, latency, token rate, and some cost values are not measured. Market tickers use Binance's public read-only API when available. Tasks and user notes persist to local JSON files when the Express backend is running; on GitHub Pages they are session-only because Pages has no API or shared database. Episodic summaries use a separate local JSON file. Communications and external infrastructure integrations are disconnected.
 
-The review UI demonstrates an approval workflow; it does not execute or sandbox trades, shell commands, deployments, or other external actions. Do not connect it to production credentials or use it as a safety control without implementing and testing an execution boundary.
+The review UI is not a production safety control. Approved execution is disabled by default and, when explicitly enabled, is limited to the local harness's allowlisted paper-trading and diagnostic actions; deployment approval records intent only. It does not submit exchange orders or deploy software. Do not expose this development server to the public internet.
 
 ## Built with
 

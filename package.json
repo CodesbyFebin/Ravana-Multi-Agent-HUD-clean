@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "test": "node --import tsx --test src/lib/nexus.test.ts"
+    "test": "node --import tsx --test src/lib/nexus.test.ts src/server/workspaceStore.test.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

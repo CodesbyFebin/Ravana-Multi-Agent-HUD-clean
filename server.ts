@@ -12,6 +12,7 @@ import { classifyTaskComplexity, routeTaskToModel, requiresAdversarialApproval, 
 import { evaluateAdversarialVerdict } from './src/lib/adversarial.ts';
 import { AgentExecutionHarness, type ToolExecutionStep } from './src/server/harness.ts';
 import { MemoryEvolutionEngine } from './src/server/memoryEvolution.ts';
+import { WorkspaceStore } from './src/server/workspaceStore.ts';
 import type { ReviewerCritique, SystemTelemetry, ModelMetadata, WebSocketClientEvent, WebSocketServerEvent, AgentId, AgentStatus, AdversarialReview } from './src/lib/types.ts';
 
 dotenv.config();
@@ -22,9 +23,28 @@ const isProd = process.env.NODE_ENV === 'production';
 const PORT = Number(process.env.PORT) || 3000;
 const HOST = process.env.HOST || '127.0.0.1';
 const isLoopbackHost = HOST === '127.0.0.1' || HOST === 'localhost' || HOST === '::1';
+const DATA_DIR = path.resolve(process.env.RAVANA_DATA_DIR || path.join(process.cwd(), '.ravana-data'));
+const allowedOrigins = new Set([
+  'http://localhost:3000',
+  'http://127.0.0.1:3000',
+  ...(process.env.ALLOWED_ORIGINS || '').split(',').map((origin) => origin.trim()).filter(Boolean),
+]);
 
 const app = express();
 app.use(express.json({ limit: '15mb' }));
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (!origin) return next();
+  if (!allowedOrigins.has(origin)) return res.status(403).json({ error: 'Origin not allowed' });
+  res.setHeader('Access-Control-Allow-Origin', origin);
+  res.setHeader('Vary', 'Origin');
+  if (req.method === 'OPTIONS') {
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, OPTIONS');
+    return res.status(204).end();
+  }
+  next();
+});
 
 // Initialize Google GenAI client
 const apiKey = process.env.GEMINI_API_KEY || '';
@@ -45,10 +65,12 @@ let modelPool: ModelMetadata[] = INITIAL_MODEL_POOL.map((model) => ({ ...model, 
 let cumulativeTokensToday = 0;
 let estimatedCostToday = 0;
 const harness = new AgentExecutionHarness({
+  dataDir: DATA_DIR,
   executionEnabled: isLoopbackHost && process.env.RAVANA_ENABLE_APPROVED_EXECUTION === 'true',
 });
 const pendingReviews = new Map<string, AdversarialReview>();
-const memoryEvolution = new MemoryEvolutionEngine();
+const memoryEvolution = new MemoryEvolutionEngine(DATA_DIR);
+const workspaceStore = new WorkspaceStore(DATA_DIR);
 
 function rememberReview(review: AdversarialReview): AdversarialReview {
   const now = Date.now();
@@ -73,11 +95,6 @@ function broadcastToolSteps(steps: ToolExecutionStep[]): void {
 // Realtime WebSocket & HUD Event Bus
 const server = createServer(app);
 const wss = new WebSocketServer({ server, path: '/live', maxPayload: 32 * 1024 });
-const allowedOrigins = new Set([
-  'http://localhost:3000',
-  'http://127.0.0.1:3000',
-  ...(process.env.ALLOWED_ORIGINS || '').split(',').map((origin) => origin.trim()).filter(Boolean),
-]);
 
 const clients = new Set<WebSocket>();
 
@@ -426,7 +443,7 @@ async function handleUserCommandWebSocket(
 }
 
 // Broadcast measured host telemetry every three seconds.
-setInterval(() => {
+const telemetryTimer = setInterval(() => {
   if (clients.size === 0) return;
 
   // 1. Broadcast real system telemetry
@@ -438,8 +455,10 @@ setInterval(() => {
 
   broadcast({ type: 'model_status', models: modelPool });
 }, 3000);
+telemetryTimer.unref();
 
-setInterval(() => broadcast(getClawBotsSnapshot()), 8000);
+const clawSnapshotTimer = setInterval(() => broadcast(getClawBotsSnapshot()), 8000);
+clawSnapshotTimer.unref();
 
 // REST Endpoints
 app.get('/api/status', (_req: Request, res: Response) => {
@@ -452,6 +471,47 @@ app.get('/api/status', (_req: Request, res: Response) => {
     activeConnections: clients.size,
     timestamp: Date.now(),
   });
+});
+
+// File-backed workspace endpoints are for the single-process local backend.
+// GitHub Pages remains a static client and does not provide shared persistence.
+app.get('/api/tasks', (_req: Request, res: Response) => {
+  res.json({ mode: 'local_file_store', tasks: workspaceStore.listTasks() });
+});
+
+app.post('/api/tasks', (req: Request, res: Response) => {
+  try {
+    const task = workspaceStore.createTask(req.body);
+    broadcast({ type: 'tasks_sync', tasks: workspaceStore.listTasks() });
+    res.status(201).json({ mode: 'local_file_store', task });
+  } catch (error) {
+    res.status(400).json({ error: error instanceof Error ? error.message : 'Invalid task' });
+  }
+});
+
+app.patch('/api/tasks/:taskId', (req: Request, res: Response) => {
+  try {
+    const task = workspaceStore.updateTaskStatus(req.params.taskId, req.body?.status);
+    if (!task) return res.status(404).json({ error: 'Task not found' });
+    broadcast({ type: 'tasks_sync', tasks: workspaceStore.listTasks() });
+    res.json({ mode: 'local_file_store', task });
+  } catch (error) {
+    res.status(400).json({ error: error instanceof Error ? error.message : 'Invalid task update' });
+  }
+});
+
+app.get('/api/memories', (_req: Request, res: Response) => {
+  res.json({ mode: 'local_file_store', memories: workspaceStore.listMemories() });
+});
+
+app.post('/api/memories', (req: Request, res: Response) => {
+  try {
+    const memory = workspaceStore.createMemory(req.body);
+    broadcast({ type: 'memories_sync', memories: workspaceStore.listMemories() });
+    res.status(201).json({ mode: 'local_file_store', memory });
+  } catch (error) {
+    res.status(400).json({ error: error instanceof Error ? error.message : 'Invalid memory' });
+  }
 });
 
 let marketTickerCache: { timestamp: number; tickers: Array<Record<string, unknown>> } | null = null;
@@ -757,6 +817,12 @@ function scheduleDailyMemorySynthesis(): void {
 scheduleDailyMemorySynthesis();
 
 async function startServer() {
+  if (!isLoopbackHost) {
+    console.error('[RAVANA] Refusing to bind beyond loopback: this prototype has no user authentication for a public API.');
+    process.exitCode = 1;
+    return;
+  }
+
   if (!isProd) {
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({

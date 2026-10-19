@@ -6,25 +6,29 @@ import { playSound } from '../lib/soundFx.ts';
 
 interface MemoryWidgetProps {
   memories: MemoryItem[];
-  onAddMemory: (mem: MemoryItem) => void;
+  persistenceMode: 'backend' | 'session';
+  onAddMemory: (mem: MemoryItem) => void | Promise<void>;
 }
 
 export const MemoryWidget: React.FC<MemoryWidgetProps> = ({
   memories,
+  persistenceMode,
   onAddMemory,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState<string>('all');
   const [newContent, setNewContent] = useState('');
   const [showAddForm, setShowAddForm] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
 
   const filteredMemories = searchMemories(searchQuery, memories).filter(
     (m) => activeCategory === 'all' || m.category === activeCategory
   );
 
-  const handleSaveMemory = (e: React.FormEvent) => {
+  const handleSaveMemory = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newContent.trim()) return;
+    if (!newContent.trim() || saving) return;
 
     playSound('chirp');
     // Auto-redact secrets and PII before saving
@@ -42,9 +46,17 @@ export const MemoryWidget: React.FC<MemoryWidgetProps> = ({
       redactedItemCount: redactedCount,
     };
 
-    onAddMemory(newItem);
-    setNewContent('');
-    setShowAddForm(false);
+    setSaving(true);
+    setSaveError('');
+    try {
+      await onAddMemory(newItem);
+      setNewContent('');
+      setShowAddForm(false);
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : 'Memory could not be saved.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const categories = [
@@ -60,7 +72,7 @@ export const MemoryWidget: React.FC<MemoryWidgetProps> = ({
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-cyan-500/20 pb-2">
         <div className="flex items-center gap-2">
           <Database className="w-4 h-4 text-cyan-400" />
-          <span className="font-orbitron font-bold text-cyan-200">SESSION MEMORY // NOT SERVER PERSISTED</span>
+          <span className="font-orbitron font-bold text-cyan-200">MEMORY // {persistenceMode === 'backend' ? 'LOCAL FILE STORE' : 'SESSION-ONLY'}</span>
           <span className="text-[10px] px-1.5 py-0.5 rounded bg-cyan-950 text-cyan-400 border border-cyan-500/30">
             AUTO-REDACTION ACTIVE
           </span>
@@ -96,12 +108,14 @@ export const MemoryWidget: React.FC<MemoryWidgetProps> = ({
           <div className="flex justify-end">
             <button
               type="submit"
+              disabled={saving}
               className="px-4 py-1.5 rounded bg-cyan-500 hover:bg-cyan-400 text-black font-bold font-mono cursor-pointer flex items-center gap-1"
             >
               <Check className="w-3.5 h-3.5" />
-              <span>REDACT & SAVE TO MEMORY</span>
+              <span>{saving ? 'SAVING…' : 'REDACT & SAVE LOCALLY'}</span>
             </button>
           </div>
+          {saveError && <p role="alert" className="text-rose-300">{saveError}</p>}
         </form>
       )}
 
@@ -142,7 +156,7 @@ export const MemoryWidget: React.FC<MemoryWidgetProps> = ({
       <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 max-h-[340px] overflow-y-auto scrollbar-thin">
         {filteredMemories.length === 0 ? (
           <div className="col-span-2 text-center py-8 text-slate-500 font-mono text-[11px]">
-            No matching memory nodes found in knowledge vault.
+            No matching memories in this {persistenceMode === 'backend' ? 'local store' : 'browser session'}.
           </div>
         ) : (
           filteredMemories.map((m) => (

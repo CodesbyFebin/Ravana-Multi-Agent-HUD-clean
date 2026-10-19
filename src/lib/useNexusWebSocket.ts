@@ -8,6 +8,7 @@ import type {
   AgentId, 
   AgentStatus, 
   TaskItem,
+  MemoryItem,
   WebSocketServerEvent, 
   WebSocketClientEvent 
 } from './types.ts';
@@ -45,6 +46,8 @@ export function useNexusWebSocket() {
   const [isFrozen, setIsFrozen] = useState(false);
   const [serverVoiceAmplitude, setServerVoiceAmplitude] = useState<number>(0);
   const [agentStatuses, setAgentStatuses] = useState<Record<string, { status: AgentStatus; currentTask?: string }>>({});
+  const [workspaceTasks, setWorkspaceTasks] = useState<TaskItem[] | null>(null);
+  const [workspaceMemories, setWorkspaceMemories] = useState<MemoryItem[] | null>(null);
 
   const socketRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<any>(null);
@@ -169,6 +172,14 @@ export function useNexusWebSocket() {
               setIsFrozen(data.frozen);
               break;
 
+            case 'tasks_sync':
+              setWorkspaceTasks(data.tasks);
+              break;
+
+            case 'memories_sync':
+              setWorkspaceMemories(data.memories);
+              break;
+
             case 'command_response':
               setLatestResponse({
                 prompt: data.prompt,
@@ -282,6 +293,8 @@ export function useNexusWebSocket() {
     isFrozen,
     serverVoiceAmplitude,
     agentStatuses,
+    workspaceTasks,
+    workspaceMemories,
     sendUserCommand,
     sendFreeze,
     sendApprovalDecision,

@@ -13,7 +13,7 @@ import { ProactiveWorksDrawer } from './components/ProactiveWorksDrawer.tsx';
 import { HudCalloutsOverlay } from './components/HudCalloutsOverlay.tsx';
 import { SettingsPanel, type RavanaTheme, type SettingsPreferences } from './components/SettingsPanel.tsx';
 
-// The 37 Modular Widgets Suites
+// Grouped widget suites mounted by the current React application
 import { DevOpsInfraWidgets } from './components/widgets/DevOpsInfraWidgets.tsx';
 import { TradingFinanceWidgets } from './components/widgets/TradingFinanceWidgets.tsx';
 import { CommsIntelWidgets } from './components/widgets/CommsIntelWidgets.tsx';
@@ -36,7 +36,7 @@ import {
   AuditReceipt, 
   ProactiveSuggestion 
 } from './lib/types.ts';
-import { INITIAL_MODEL_POOL, routeTaskToModel } from './lib/router.ts';
+import { INITIAL_MODEL_POOL, routeTaskToModel, requiresAdversarialApproval } from './lib/router.ts';
 import { useNexusWebSocket } from './lib/useNexusWebSocket.ts';
 
 const SETTINGS_KEY = 'ravana_ui_preferences_v1';
@@ -189,10 +189,11 @@ export default function App() {
     isFrozen: wsIsFrozen,
     serverVoiceAmplitude,
     agentStatuses,
+    workspaceTasks,
+    workspaceMemories,
     sendFreeze,
     sendApprovalDecision,
     sendVoiceAmplitude,
-    sendTaskUpdate,
   } = useNexusWebSocket();
 
   // System Core Status & Reactor Kinematics
@@ -231,12 +232,36 @@ export default function App() {
 
   // Tasks Kanban State
   const [tasks, setTasks] = useState<TaskItem[]>([]);
+  const [tasksBackendConnected, setTasksBackendConnected] = useState(false);
 
   // Shared Memory State
   const [memories, setMemories] = useState<MemoryItem[]>([]);
+  const [memoriesBackendConnected, setMemoriesBackendConnected] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    void fetch('/api/tasks').then(async (response) => {
+      if (!response.ok) throw new Error('Task API unavailable');
+      const data = await response.json() as { tasks?: TaskItem[] };
+      if (active && Array.isArray(data.tasks)) {
+        setTasks(data.tasks);
+        setTasksBackendConnected(true);
+      }
+    }).catch(() => { if (active) setTasksBackendConnected(false); });
+    void fetch('/api/memories').then(async (response) => {
+      if (!response.ok) throw new Error('Memory API unavailable');
+      const data = await response.json() as { memories?: MemoryItem[] };
+      if (active && Array.isArray(data.memories)) {
+        setMemories(data.memories);
+        setMemoriesBackendConnected(true);
+      }
+    }).catch(() => { if (active) setMemoriesBackendConnected(false); });
+    return () => { active = false; };
+  }, []);
 
   // Adversarial Review Modal State
   const [activeReview, setActiveReview] = useState<AdversarialReview | null>(null);
+  const [reviewTaskId, setReviewTaskId] = useState<string | null>(null);
   const [auditReceipts, setAuditReceipts] = useState<AuditReceipt[]>([]);
 
   // Proactive Works Drawer
@@ -430,6 +455,20 @@ export default function App() {
     setIsFrozen(wsIsFrozen);
   }, [wsIsFrozen]);
 
+  useEffect(() => {
+    if (workspaceTasks) {
+      setTasks(workspaceTasks);
+      setTasksBackendConnected(true);
+    }
+  }, [workspaceTasks]);
+
+  useEffect(() => {
+    if (workspaceMemories) {
+      setMemories(workspaceMemories);
+      setMemoriesBackendConnected(true);
+    }
+  }, [workspaceMemories]);
+
   // Sync agent status updates from WebSocket
   useEffect(() => {
     if (Object.keys(agentStatuses).length > 0) {
@@ -560,6 +599,84 @@ export default function App() {
     } catch {
       setLastSpeechResponse('Review service unavailable. The action was not approved or executed.');
     }
+  };
+
+  const addTask = async () => {
+    const title = prompt('Enter Task Title:')?.trim();
+    if (!title) return;
+    const requiresReview = requiresAdversarialApproval(title);
+    if (tasksBackendConnected) {
+      try {
+        const response = await fetch('/api/tasks', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title,
+            description: 'Custom user command scheduled for agent execution.',
+            assignedAgent: activeAgentId,
+            priority: 'medium',
+            requiresReview,
+            tags: ['user_task', activeAgentId],
+          }),
+        });
+        if (!response.ok) throw new Error('Could not save task to the local backend.');
+        const data = await response.json() as { task: TaskItem };
+        setTasks((previous) => [data.task, ...previous.filter((task) => task.id !== data.task.id)]);
+        return;
+      } catch (error) {
+        setLastSpeechResponse(error instanceof Error ? error.message : 'Could not save task.');
+        return;
+      }
+    }
+    const timestamp = Date.now();
+    const newTask: TaskItem = {
+      id: 'task_' + crypto.randomUUID(),
+      title,
+      description: 'Custom user command scheduled for agent execution.',
+      status: 'todo',
+      assignedAgent: activeAgentId,
+      priority: 'medium',
+      requiresReview,
+      tags: ['user_task', activeAgentId],
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+    setTasks((previous) => [newTask, ...previous]);
+  };
+
+  const moveTask = async (taskId: string, status: TaskItem['status']) => {
+    if (tasksBackendConnected) {
+      try {
+        const response = await fetch(`/api/tasks/${encodeURIComponent(taskId)}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status }),
+        });
+        if (!response.ok) throw new Error('Could not update task in the local backend.');
+        const data = await response.json() as { task: TaskItem };
+        setTasks((previous) => previous.map((task) => task.id === taskId ? data.task : task));
+        return;
+      } catch (error) {
+        setLastSpeechResponse(error instanceof Error ? error.message : 'Could not update task.');
+        return;
+      }
+    }
+    setTasks((previous) => previous.map((task) => task.id === taskId ? { ...task, status, updatedAt: Date.now() } : task));
+  };
+
+  const addMemory = async (memory: MemoryItem) => {
+    if (memoriesBackendConnected) {
+      const response = await fetch('/api/memories', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(memory),
+      });
+      if (!response.ok) throw new Error('Could not save memory to the local backend.');
+      const data = await response.json() as { memory: MemoryItem };
+      setMemories((previous) => [data.memory, ...previous.filter((item) => item.id !== data.memory.id)]);
+      return;
+    }
+    setMemories((previous) => [memory, ...previous]);
   };
 
   return (
@@ -697,12 +814,8 @@ export default function App() {
             {activeTab === 'tasks' && (
               <TasksWidget
                 tasks={tasks}
-                onMoveTask={(id, st) => {
-                  setTasks((prev) =>
-                    prev.map((t) => (t.id === id ? { ...t, status: st } : t))
-                  );
-                  sendTaskUpdate(id, st);
-                }}
+                persistenceMode={tasksBackendConnected ? 'backend' : 'session'}
+                onMoveTask={moveTask}
                 onTriggerReview={async (task) => {
                   try {
                     const response = await fetch('/api/adversarial-review', {
@@ -717,28 +830,12 @@ export default function App() {
                     });
                     if (!response.ok) throw new Error('Review service unavailable');
                     setActiveReview(await response.json() as AdversarialReview);
+                    setReviewTaskId(task.id);
                   } catch {
                     setLastSpeechResponse('Review service unavailable. The action was not approved or executed.');
                   }
                 }}
-                onAddTask={() => {
-                  const title = prompt('Enter Task Title:');
-                  if (title) {
-                    const newTask: TaskItem = {
-                      id: 'task_' + Math.random().toString(36).substring(2, 8),
-                      title,
-                      description: 'Custom user command scheduled for agent execution.',
-                      status: 'todo',
-                      assignedAgent: activeAgentId,
-                      priority: 'medium',
-                      requiresReview: title.toLowerCase().includes('deploy') || title.toLowerCase().includes('trade'),
-                      tags: ['user_task', activeAgentId],
-                      createdAt: Date.now(),
-                      updatedAt: Date.now(),
-                    };
-                    setTasks((prev) => [newTask, ...prev]);
-                  }
-                }}
+                onAddTask={addTask}
               />
             )}
 
@@ -747,7 +844,8 @@ export default function App() {
               <>
                 <MemoryWidget
                   memories={memories}
-                  onAddMemory={(mem) => setMemories((prev) => [mem, ...prev])}
+                  persistenceMode={memoriesBackendConnected ? 'backend' : 'session'}
+                  onAddMemory={addMemory}
                 />
                 <div className="mt-4"><EpisodicMemoryWidget /></div>
               </>
@@ -779,11 +877,8 @@ export default function App() {
             sendApprovalDecision(activeReview.id, 'approved', receipt);
             setActiveReview(null);
             setSystemStatus('acting');
-            setTasks((prev) =>
-              prev.map((t) =>
-                t.title === activeReview.actionTitle ? { ...t, status: 'done' } : t
-              )
-            );
+            if (reviewTaskId) void moveTask(reviewTaskId, 'in_progress');
+            setReviewTaskId(null);
             speakText(`Adversarial consensus approved action: ${activeReview.actionTitle}. Receipt logged.`);
           }}
           onReject={(receipt) => {
@@ -791,10 +886,13 @@ export default function App() {
             sendApprovalDecision(activeReview.id, 'rejected', receipt);
             setActiveReview(null);
             setSystemStatus('idle');
+            if (reviewTaskId) void moveTask(reviewTaskId, 'todo');
+            setReviewTaskId(null);
             speakText(`Action ${activeReview.actionTitle} rejected by user. Logged to immutable audit trail.`);
           }}
           onClose={() => {
             setActiveReview(null);
+            setReviewTaskId(null);
             setSystemStatus('idle');
           }}
         />

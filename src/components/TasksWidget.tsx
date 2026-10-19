@@ -5,13 +5,15 @@ import { playSound } from '../lib/soundFx.ts';
 
 interface TasksWidgetProps {
   tasks: TaskItem[];
-  onMoveTask: (taskId: string, newStatus: TaskItem['status']) => void;
+  persistenceMode: 'backend' | 'session';
+  onMoveTask: (taskId: string, newStatus: TaskItem['status']) => void | Promise<void>;
   onTriggerReview: (task: TaskItem) => void;
   onAddTask: () => void;
 }
 
 export const TasksWidget: React.FC<TasksWidgetProps> = ({
   tasks,
+  persistenceMode,
   onMoveTask,
   onTriggerReview,
   onAddTask,
@@ -37,7 +39,7 @@ export const TasksWidget: React.FC<TasksWidgetProps> = ({
       <div className="flex items-center justify-between border-b border-cyan-500/20 pb-2">
         <div className="flex items-center gap-2">
           <CheckSquare className="w-4 h-4 text-cyan-400" />
-          <span className="font-orbitron font-bold text-cyan-200">TASK BOARD // SESSION-ONLY</span>
+          <span className="font-orbitron font-bold text-cyan-200">TASK BOARD // {persistenceMode === 'backend' ? 'LOCAL FILE STORE' : 'SESSION-ONLY'}</span>
           <span className="text-[10px] px-1.5 py-0.5 rounded bg-cyan-950 text-cyan-400 border border-cyan-500/30">
             {tasks.length} TASKS TRACKED
           </span>

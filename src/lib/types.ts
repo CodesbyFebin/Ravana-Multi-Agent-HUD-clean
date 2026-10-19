@@ -170,6 +170,8 @@ export type WebSocketServerEvent =
   | { type: 'voice_amplitude'; amplitude: number; state?: AgentStatus }
   | { type: 'barge_in'; message: string }
   | { type: 'freeze_state'; frozen: boolean }
+  | { type: 'tasks_sync'; tasks: TaskItem[] }
+  | { type: 'memories_sync'; memories: MemoryItem[] }
   | { type: 'command_response'; prompt: string; text: string; agentId: AgentId; modelUsed: string };
 
 export type WebSocketClientEvent =
