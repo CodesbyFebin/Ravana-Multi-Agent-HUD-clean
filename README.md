@@ -57,7 +57,7 @@ The static interface is published at [codesbyfebin.github.io/Ravana-Multi-Agent-
 
 | Variable | Required | Purpose |
 | --- | --- | --- |
-| `GEMINI_API_KEY` | Optional | Enables Gemini requests, grounding, and generated speech through the server. Without it, the server returns a local fallback response. |
+| `GEMINI_API_KEY` | Optional | Enables Gemini requests, grounding, and generated speech through the server. Without it, chat and review requests fail closed with HTTP 503; no model response is generated. |
 | `APP_URL` | Optional | Public app URL for deployments that need to refer to their own host. |
 
 Keep API keys on the server. Do not expose secrets in frontend variables or commit a populated `.env` file.
@@ -77,7 +77,7 @@ The browser UI talks to the local Express server for chat, speech, and adversari
 
 ## Important: demo data and safety boundaries
 
-RAVANA is a prototype HUD, not a finished autonomous-agent runtime. Several widget values, agent activity examples, model availability states, proactive suggestions, finance cards, and simulated review outcomes are demonstration data. The server emits real host CPU, memory, uptime, and connection counts, but some telemetry fields and market events are simulated. Verify each panel's implementation before relying on its values.
+RAVANA is a prototype HUD, not a finished autonomous-agent runtime. The ten agent cards are role identities routed through one shared Gemini-backed orchestrator, not ten independent workers. Claw bot cards are inactive strategy profiles; no bot trading loop or exchange order execution is running. The model pool starts from static metadata, while online status and usage update after successful requests. Host CPU, memory, disk, uptime, and WebSocket client counts are measured from the local Node.js process; network speed, latency, token rate, and some cost values are not measured. Market tickers use Binance's public read-only API when available. Tasks and the basic memory panel are client-side state; episodic summaries are stored in a local JSON file. Communications and external infrastructure integrations are disconnected.
 
 The review UI demonstrates an approval workflow; it does not execute or sandbox trades, shell commands, deployments, or other external actions. Do not connect it to production credentials or use it as a safety control without implementing and testing an execution boundary.
 
